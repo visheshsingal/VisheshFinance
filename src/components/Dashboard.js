@@ -43,7 +43,7 @@ export default function Dashboard({ onLogout }) {
   // Dynamic advanced filter states
   const [studentFilters, setStudentFilters] = useState({ startDate: '', endDate: '', course: '' });
   const [expenseFilters, setExpenseFilters] = useState({ startDate: '', endDate: '', classification: '' });
-  const [feeFilters, setFeeFilters] = useState({ startDate: '', endDate: '', course: '', bankName: '', method: '' });
+  const [feeFilters, setFeeFilters] = useState({ startDate: '', endDate: '', course: '', bankName: '', method: '', student: '' });
   
   // Selected daily activity log date (defaults to today)
   const [selectedLogDate, setSelectedLogDate] = useState(() => {
@@ -571,6 +571,12 @@ export default function Dashboard({ onLogout }) {
       if (fCourseId !== feeFilters.course) return false;
     }
 
+    // Student Filter (under the selected Batch)
+    if (feeFilters.student) {
+      const fStudentId = f.student?._id || f.student || '';
+      if (fStudentId !== feeFilters.student) return false;
+    }
+
     // 3. Transaction Mode (UPI / Cash / Bank)
     if (feeFilters.method && f.method !== feeFilters.method) {
       return false;
@@ -987,11 +993,6 @@ export default function Dashboard({ onLogout }) {
                         <tr key={s._id}>
                           <td style={{ fontWeight: '600', color: '#0f172a' }}>
                             <div style={{ fontSize: '15px' }}>{s.name}</div>
-                            {s.course?.name && (
-                              <div style={{ fontSize: '12px', color: '#4f46e5', fontWeight: '500', marginTop: '3px' }}>
-                                Batch: {s.course.name}
-                              </div>
-                            )}
                           </td>
                           <td style={{ color: '#1e293b', fontWeight: '600', fontSize: '14px' }}>
                             {s.parentName || <span style={{ color: '#94a3b8', fontStyle: 'italic', fontWeight: 'normal' }}>Not Set</span>}
@@ -1071,7 +1072,7 @@ export default function Dashboard({ onLogout }) {
                   <label style={{ fontSize: '13px', color: '#475569', fontWeight: '500' }}>Batch:</label>
                   <select
                     value={feeFilters.course}
-                    onChange={(e) => setFeeFilters(prev => ({ ...prev, course: e.target.value }))}
+                    onChange={(e) => setFeeFilters(prev => ({ ...prev, course: e.target.value, student: '' }))}
                     style={{
                       padding: '6px 12px',
                       borderRadius: '6px',
@@ -1086,6 +1087,34 @@ export default function Dashboard({ onLogout }) {
                     {courses.map(c => (
                       <option key={c._id} value={c._id}>{c.name}</option>
                     ))}
+                  </select>
+                </div>
+
+                {/* Dynamic Student Filter (Cascaded under Batch selection) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', color: '#475569', fontWeight: '500' }}>Student:</label>
+                  <select
+                    value={feeFilters.student || ''}
+                    onChange={(e) => setFeeFilters(prev => ({ ...prev, student: e.target.value }))}
+                    disabled={!feeFilters.course}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13px',
+                      background: feeFilters.course ? '#ffffff' : '#f1f5f9',
+                      color: feeFilters.course ? '#1e293b' : '#94a3b8',
+                      cursor: feeFilters.course ? 'pointer' : 'not-allowed',
+                      maxWidth: '180px'
+                    }}
+                  >
+                    <option value="">{feeFilters.course ? 'All Enrolled Students' : 'Select Batch First'}</option>
+                    {feeFilters.course && students
+                      .filter(s => (s.course?._id || s.course || '') === feeFilters.course)
+                      .map(s => (
+                        <option key={s._id} value={s._id}>{s.name}</option>
+                      ))
+                    }
                   </select>
                 </div>
 
@@ -1172,9 +1201,9 @@ export default function Dashboard({ onLogout }) {
                 </div>
 
                 {/* Reset Filters button */}
-                {(feeFilters.course || feeFilters.method || feeFilters.bankName || feeFilters.startDate || feeFilters.endDate) && (
+                {(feeFilters.course || feeFilters.method || feeFilters.bankName || feeFilters.startDate || feeFilters.endDate || feeFilters.student) && (
                   <button
-                    onClick={() => setFeeFilters({ course: '', method: '', bankName: '', startDate: '', endDate: '' })}
+                    onClick={() => setFeeFilters({ course: '', method: '', bankName: '', startDate: '', endDate: '', student: '' })}
                     style={{
                       background: 'none',
                       border: 'none',
@@ -1260,11 +1289,6 @@ export default function Dashboard({ onLogout }) {
                           <tr key={f._id}>
                             <td style={{ fontWeight: '600', color: '#0f172a' }}>
                               <div style={{ fontSize: '15px' }}>{f.student?.name || '—'}</div>
-                              {f.student?.course?.name && (
-                                <div style={{ fontSize: '11px', color: '#4f46e5', fontWeight: '500', marginTop: '2px' }}>
-                                  Batch: {f.student.course.name}
-                                </div>
-                              )}
                             </td>
                             <td style={{ color: '#0f172a', fontWeight: '500', fontSize: '14px' }}>
                               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
