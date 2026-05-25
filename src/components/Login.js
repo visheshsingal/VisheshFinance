@@ -4,8 +4,8 @@ import API from '@/lib/api';
 import { User, Lock, GraduationCap } from 'lucide-react';
 
 export default function Login({ onLogin }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('adminpassword');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -15,8 +15,10 @@ export default function Login({ onLogin }) {
     setLoading(true);
     try {
       const response = await API.post('/auth/login', { username, password });
-      localStorage.setItem('token', response.data.token);
-      onLogin(response.data.token);
+      const { token, role } = response.data;
+      localStorage.setItem('token', token);
+      localStorage.setItem('role', role);
+      onLogin({ token, role });
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Please try again.');
     } finally {
@@ -82,10 +84,7 @@ export default function Login({ onLogin }) {
           </button>
         </form>
         
-        <div className="login-hint">
-          Demo Credentials:<br />
-          Username: <code>admin</code> • Password: <code>adminpassword</code>
-        </div>
+
       </div>
     </div>
   );

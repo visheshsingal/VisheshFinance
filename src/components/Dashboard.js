@@ -18,7 +18,9 @@ import {
   Wallet,
   Calendar,
   Layers,
-  FileText
+  FileText,
+  Clipboard,
+  Archive
 } from 'lucide-react';
 
 export default function Dashboard({ onLogout }) {
@@ -43,12 +45,20 @@ export default function Dashboard({ onLogout }) {
   // Dynamic advanced filter states
   const [studentFilters, setStudentFilters] = useState({ startDate: '', endDate: '', course: '' });
   const [expenseFilters, setExpenseFilters] = useState({ startDate: '', endDate: '', classification: '' });
+  const mainExpenseCategories = ['Electricity Bill', 'Office Rent', 'Staff Salary'];
   const [feeFilters, setFeeFilters] = useState({ startDate: '', endDate: '', course: '', bankName: '', method: '', student: '' });
   
-  // Selected daily activity log date (defaults to today)
-  const [selectedLogDate, setSelectedLogDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  // Selected daily activity log date range (defaults to today)
+  const [logFilters, setLogFilters] = useState(() => ({
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  }));
+
+  const [statementFilters, setStatementFilters] = useState(() => ({
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    source: ''
+  }));
 
   // Fetch all data
   const fetchAll = async () => {
@@ -160,16 +170,30 @@ export default function Dashboard({ onLogout }) {
       });
     } else if (type === 'fees') {
       setFormData({
+        receiptType: 'student',
         course: '',
         student: '',
         totalAmount: '',
         paidAmount: '',
         method: 'cash',
-        bankName: ''
+        bankName: '',
+        date: new Date().toISOString().split('T')[0]
+      });
+    } else if (type === 'otherReceipt') {
+      setFormData({
+        receiptType: 'other',
+        title: '',
+        description: '',
+        amount: '',
+        method: 'cash',
+        bankName: '',
+        date: new Date().toISOString().split('T')[0]
       });
     } else if (type === 'expenses') {
       setFormData({
-        type: '',
+        expenseType: 'main',
+        category: '',
+        customTitle: '',
         amount: '',
         date: new Date().toISOString().split('T')[0],
         notes: ''
@@ -190,12 +214,25 @@ export default function Dashboard({ onLogout }) {
     } else if (type === 'fees' && item.student) {
       setFormData({
         ...item,
+        receiptType: item.receiptType || 'student',
         course: item.student.course?._id || item.student.course || '',
         student: item.student._id || item.student,
         totalAmount: item.totalAmount || item.amount || 0,
         paidAmount: item.paidAmount || item.amount || 0,
         method: item.method || 'cash',
-        bankName: item.bankName || ''
+        bankName: item.bankName || '',
+        date: item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]
+      });
+    } else if (type === 'otherReceipt') {
+      setFormData({
+        ...item,
+        receiptType: 'other',
+        title: item.title || '',
+        description: item.description || '',
+        amount: item.amount || item.paidAmount || 0,
+        method: item.method || 'cash',
+        bankName: item.bankName || '',
+        date: item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]
       });
     } else if (type === 'courses') {
       setFormData({
@@ -205,8 +242,13 @@ export default function Dashboard({ onLogout }) {
         year: item.year || new Date().getFullYear().toString()
       });
     } else if (type === 'expenses') {
+      const isMainCategory = mainExpenseCategories.includes(item.type);
       setFormData({
-        ...item,
+        expenseType: isMainCategory ? 'main' : 'other',
+        category: isMainCategory ? item.type : '',
+        customTitle: isMainCategory ? '' : item.type,
+        amount: item.amount || 0,
+        notes: item.notes || '',
         date: item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]
       });
     } else {
@@ -253,31 +295,53 @@ export default function Dashboard({ onLogout }) {
     }
   };
 
-  // Fees API
+  // Fees / Receipt API
   const saveFee = async (e) => {
     e.preventDefault();
     try {
-      const selectedStudentId = formData.student;
-      const studentFees = fees.filter(f => {
-        const studentId = f.student?._id || f.student;
-        const matchesStudent = studentId === selectedStudentId;
-        const isNotCurrentEdit = editingId ? f._id !== editingId : true;
-        return matchesStudent && isNotCurrentEdit;
-      });
-      const existingTotalAmount = studentFees[0]?.totalAmount || 0;
-      
-      const finalTotalAmount = parseFloat(formData.totalAmount !== undefined ? formData.totalAmount : existingTotalAmount) || 0;
-      const finalPaidAmount = parseFloat(formData.paidAmount || 0);
+      const receiptType = formData.receiptType || 'student';
+      let data;
 
-      const data = { 
-        ...formData, 
-        totalAmount: finalTotalAmount,
-        paidAmount: finalPaidAmount,
-        amount: finalPaidAmount, // backward compatibility
-        method: formData.method || 'cash',
-        bankName: formData.bankName ? formData.bankName.trim() : '',
-        date: formData.date || new Date().toISOString()
-      };
+      if (receiptType === 'other') {
+        const finalAmount = parseFloat(formData.amount || 0);
+        data = {
+          receiptType,
+          title: formData.title?.trim() || '',
+          description: formData.description?.trim() || '',
+          totalAmount: 0,
+          paidAmount: finalAmount,
+          amount: finalAmount,
+          method: formData.method || 'cash',
+          bankName: formData.bankName ? formData.bankName.trim() : '',
+          date: formData.date || new Date().toISOString()
+        };
+      } else {
+        const selectedStudentId = formData.student;
+        const studentFees = fees.filter(f => {
+          const studentId = f.student?._id || f.student;
+          const matchesStudent = studentId === selectedStudentId;
+          const isNotCurrentEdit = editingId ? f._id !== editingId : true;
+          return matchesStudent && isNotCurrentEdit;
+        });
+        const existingTotalAmount = studentFees[0]?.totalAmount || 0;
+        const finalTotalAmount = parseFloat(formData.totalAmount !== undefined ? formData.totalAmount : existingTotalAmount) || 0;
+        const finalPaidAmount = parseFloat(formData.paidAmount || 0);
+
+        data = {
+          receiptType,
+          student: selectedStudentId,
+          course: formData.course || '',
+          title: '',
+          description: '',
+          totalAmount: finalTotalAmount,
+          paidAmount: finalPaidAmount,
+          amount: finalPaidAmount,
+          method: formData.method || 'cash',
+          bankName: formData.bankName ? formData.bankName.trim() : '',
+          date: formData.date || new Date().toISOString()
+        };
+      }
+
       if (editingId) {
         await API.put(`/fees/${editingId}`, data);
       } else {
@@ -352,7 +416,17 @@ export default function Dashboard({ onLogout }) {
   const saveExpense = async (e) => {
     e.preventDefault();
     try {
-      const data = { ...formData, amount: parseFloat(formData.amount) };
+      const finalType = formData.expenseType === 'other'
+        ? (formData.customTitle?.trim() || 'Other Expense')
+        : (formData.category || 'Other Expense');
+
+      const data = {
+        type: finalType,
+        amount: parseFloat(formData.amount) || 0,
+        date: formData.date || new Date().toISOString(),
+        notes: formData.notes || ''
+      };
+
       if (editingId) {
         await API.put(`/expenses/${editingId}`, data);
       } else {
@@ -431,7 +505,7 @@ export default function Dashboard({ onLogout }) {
       "Total Paid So Far (INR)",
       "Remaining Due (INR)"
     ];
-    const csvData = filteredFees.map(f => {
+    const csvData = filteredStudentFees.map(f => {
       const studentId = f.student?._id || f.student;
       const studentFeesList = fees.filter(fee => (fee.student?._id || fee.student) === studentId);
       
@@ -467,50 +541,74 @@ export default function Dashboard({ onLogout }) {
     exportToCSV(csvData, headers, "office_operational_expenses");
   };
 
+  const isInLogRange = (dateString) => {
+    if (!dateString) return false;
+    const itemDate = new Date(dateString).toISOString().split('T')[0];
+    if (logFilters.startDate && itemDate < logFilters.startDate) return false;
+    if (logFilters.endDate && itemDate > logFilters.endDate) return false;
+    return true;
+  };
+
   // Daily Logs filter calculations
   const dailyFees = fees.filter(f => {
     if (!f.date) return false;
-    const itemDate = new Date(f.date).toISOString().split('T')[0];
-    return itemDate === selectedLogDate;
+    if (!isInLogRange(f.date)) return false;
+    return f.receiptType !== 'other';
+  });
+
+  const dailyOtherReceipts = fees.filter(f => {
+    if (!f.date) return false;
+    if (!isInLogRange(f.date)) return false;
+    return f.receiptType === 'other';
   });
 
   const dailyExpenses = expenses.filter(e => {
     if (!e.date) return false;
-    const itemDate = new Date(e.date).toISOString().split('T')[0];
-    return itemDate === selectedLogDate;
+    return isInLogRange(e.date);
   });
 
   const exportDailyLogs = () => {
     const headers = [
       "Activity Type",
-      "Classification or Student",
+      "Title / Name",
       "Reference Details",
       "Transaction Date",
-      "Payment Mode or Outflow",
+      "Payment Mode / Flow",
       "Amount (INR)"
     ];
     const csvData = [];
     dailyFees.forEach(f => {
       csvData.push({
-        "Activity Type": "Fee Inflow",
-        "Classification or Student": f.student?.name || '—',
+        "Activity Type": "Payment Receipt",
+        "Title / Name": f.student?.name || '—',
         "Reference Details": f.student?.course?.name || '—',
         "Transaction Date": f.date ? new Date(f.date).toLocaleDateString('en-IN') : '—',
-        "Payment Mode or Outflow": f.bankName ? `${f.method} (${f.bankName})` : f.method,
+        "Payment Mode / Flow": f.bankName ? `${f.method} (${f.bankName})` : f.method,
         "Amount (INR)": f.paidAmount || f.amount || 0
+      });
+    });
+    dailyOtherReceipts.forEach(f => {
+      csvData.push({
+        "Activity Type": "Other Receipt",
+        "Title / Name": f.title || 'Other Receipt',
+        "Reference Details": f.description || '—',
+        "Transaction Date": f.date ? new Date(f.date).toLocaleDateString('en-IN') : '—',
+        "Payment Mode / Flow": f.bankName ? `${f.method} (${f.bankName})` : f.method,
+        "Amount (INR)": f.amount || f.paidAmount || 0
       });
     });
     dailyExpenses.forEach(e => {
       csvData.push({
-        "Activity Type": "Expense Outflow",
-        "Classification or Student": e.type || '—',
+        "Activity Type": "Expense",
+        "Title / Name": e.type || '—',
         "Reference Details": e.notes || '—',
         "Transaction Date": e.date ? new Date(e.date).toLocaleDateString('en-IN') : '—',
-        "Payment Mode or Outflow": "Paid Outflow",
+        "Payment Mode / Flow": "Outflow",
         "Amount (INR)": e.amount || 0
       });
     });
-    exportToCSV(csvData, headers, `daily_financial_logs_${selectedLogDate}`);
+    const fileName = `daily_financial_logs_${logFilters.startDate}${logFilters.endDate ? `_to_${logFilters.endDate}` : ''}`;
+    exportToCSV(csvData, headers, fileName);
   };
 
   // Calculate totals
@@ -606,6 +704,17 @@ export default function Dashboard({ onLogout }) {
     return true;
   });
 
+  const filteredStudentFees = filteredFees.filter(f => f.receiptType === 'student');
+  const filteredOtherReceipts = fees.filter(f => {
+    if (f.receiptType !== 'other') return false;
+    const matchesSearch = !searchQuery ||
+      f.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      f.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      f.method?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (f.amount || f.paidAmount || 0).toString().includes(searchQuery);
+    return matchesSearch;
+  });
+
   const filteredCourses = courses.filter(c => 
     c.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.className?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -644,6 +753,46 @@ export default function Dashboard({ onLogout }) {
 
     return true;
   });
+
+  const filteredMainExpenses = filteredExpenses.filter(e => mainExpenseCategories.includes(e.type));
+  const filteredOtherExpenses = filteredExpenses.filter(e => !mainExpenseCategories.includes(e.type));
+
+  const statementFees = fees.filter(f => {
+    if (!f.date) return false;
+    const itemDate = new Date(f.date).toISOString().split('T')[0];
+    if (statementFilters.startDate && itemDate < statementFilters.startDate) return false;
+    if (statementFilters.endDate && itemDate > statementFilters.endDate) return false;
+    const sourceName = f.method === 'cash'
+      ? 'Cash'
+      : (f.bankName || f.method?.toUpperCase() || 'Bank');
+    if (statementFilters.source && statementFilters.source !== sourceName) return false;
+    return true;
+  });
+
+  const statementSourceOptions = Array.from(new Set(statementFees.map(f => f.method === 'cash' ? 'Cash' : (f.bankName || f.method?.toUpperCase() || 'Bank'))));
+
+  const statementSourceTotals = statementFees.reduce((acc, fee) => {
+    const source = fee.method === 'cash'
+      ? 'Cash'
+      : (fee.bankName || fee.method?.toUpperCase() || 'Bank');
+    const batchName = fee.student?.course?.name || 'Unknown Batch';
+    const studentName = fee.student?.name || fee.student || 'Unknown Person';
+
+    if (!acc[source]) acc[source] = { source, count: 0, amount: 0, batches: new Set(), persons: new Set() };
+    acc[source].count += 1;
+    acc[source].amount += (fee.paidAmount || fee.amount || 0);
+    acc[source].batches.add(batchName);
+    acc[source].persons.add(studentName);
+    return acc;
+  }, {});
+
+  const statementSourceList = Object.values(statementSourceTotals).map(group => ({
+    source: group.source,
+    count: group.count,
+    amount: group.amount,
+    batches: Array.from(group.batches),
+    persons: Array.from(group.persons)
+  }));
 
   return (
     <div className="dashboard-layout">
@@ -684,7 +833,23 @@ export default function Dashboard({ onLogout }) {
             onClick={() => { setActiveTab('fees'); setSearchQuery(''); setIsSidebarOpen(false); }}
           >
             <CreditCard size={18} />
-            <span>Fees Tracker</span>
+            <span>Payment Receipts</span>
+          </button>
+
+          <button 
+            className={`menu-item ${activeTab === 'otherReceipts' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('otherReceipts'); setSearchQuery(''); setIsSidebarOpen(false); }}
+          >
+            <FileText size={18} />
+            <span>Other Receipts</span>
+          </button>
+
+          <button 
+            className={`menu-item ${activeTab === 'statement' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('statement'); setSearchQuery(''); setIsSidebarOpen(false); }}
+          >
+            <FileText size={18} />
+            <span>Statement</span>
           </button>
 
           <button 
@@ -739,9 +904,11 @@ export default function Dashboard({ onLogout }) {
             <div className="page-title-container">
               <h2 className="page-title">
                 {activeTab === 'students' && 'Students'}
-                {activeTab === 'fees' && 'Fee Transactions'}
+                {activeTab === 'fees' && 'Payment Receipts'}
+                {activeTab === 'otherReceipts' && 'Other Receipts'}
                 {activeTab === 'courses' && 'Academy Courses'}
                 {activeTab === 'expenses' && 'Corporate Expenses'}
+                {activeTab === 'statement' && 'Statement'}
                 {activeTab === 'dailyLogs' && 'Daily Activity Logs'}
               </h2>
               <span className="page-sub">Vishesh Academy of Commerce Dashboard</span>
@@ -1032,7 +1199,7 @@ export default function Dashboard({ onLogout }) {
                   <div className="card-title-icon" style={{ color: '#10b981', background: '#d1fae5' }}>
                     <CreditCard size={20} />
                   </div>
-                  <h3>Fee Receipts Ledger</h3>
+                  <h3>Payment Receipt Ledger</h3>
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
@@ -1041,14 +1208,14 @@ export default function Dashboard({ onLogout }) {
                     <input 
                       type="text"
                       className="search-input"
-                      placeholder="Search transactions..."
+                      placeholder="Search payment receipts..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                   </div>
                   <button className="btn" onClick={() => openAddForm('fees')} style={{ background: '#10b981', boxShadow: '0 4px 10px rgba(16, 185, 129, 0.15)' }}>
                     <Plus size={16} />
-                    <span>Record Fee</span>
+                    <span>Record Payment</span>
                   </button>
                 </div>
               </div>
@@ -1252,13 +1419,13 @@ export default function Dashboard({ onLogout }) {
                 </button>
               </div>
 
-              {filteredFees.length === 0 ? (
+              {filteredStudentFees.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-state-icon">
                     <CreditCard size={32} />
                   </div>
                   <h4>No transactions recorded</h4>
-                  <p>{searchQuery ? 'Try adjusting your search query' : 'Record your first student fee payment.'}</p>
+                  <p>{searchQuery ? 'Try adjusting your search query' : 'Record your first student payment receipt.'}</p>
                 </div>
               ) : (
                 <div className="table-container">
@@ -1274,7 +1441,7 @@ export default function Dashboard({ onLogout }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredFees.map(f => {
+                      {filteredStudentFees.map(f => {
                         const studentId = f.student?._id || f.student;
                         const studentFees = fees.filter(fee => (fee.student?._id || fee.student) === studentId);
                         
@@ -1341,6 +1508,204 @@ export default function Dashboard({ onLogout }) {
                           </tr>
                         );
                       })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'otherReceipts' && (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title-group">
+                  <div className="card-title-icon" style={{ color: '#6366f1', background: '#eef2ff' }}>
+                    <FileText size={20} />
+                  </div>
+                  <h3>Other Receipts Ledger</h3>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+                  <div className="search-wrapper">
+                    <Search size={16} className="search-icon-inside" />
+                    <input 
+                      type="text"
+                      className="search-input"
+                      placeholder="Search other receipts..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <button className="btn" onClick={() => openAddForm('otherReceipt')} style={{ background: '#6366f1', boxShadow: '0 4px 10px rgba(99, 102, 241, 0.15)' }}>
+                    <Plus size={16} />
+                    <span>Record Other Receipt</span>
+                  </button>
+                </div>
+              </div>
+
+              {filteredOtherReceipts.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">
+                    <FileText size={32} />
+                  </div>
+                  <h4>No other receipts recorded</h4>
+                  <p>{searchQuery ? 'Try adjusting your search query' : 'Record your first custom receipt.'}</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Receipt Title</th>
+                        <th>Description</th>
+                        <th>Received On</th>
+                        <th>Amount</th>
+                        <th>Payment Method</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredOtherReceipts.map(f => (
+                        <tr key={f._id}>
+                          <td style={{ fontWeight: '600', color: '#0f172a' }}>{f.title || 'Other Receipt'}</td>
+                          <td style={{ color: '#334155', fontSize: '14px' }}>{f.description || 'No description provided'}</td>
+                          <td style={{ color: '#0f172a', fontWeight: '500', fontSize: '14px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <Calendar size={13} style={{ color: '#64748b' }} />
+                              {new Date(f.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: '700', color: '#16a34a', fontSize: '15px' }}>
+                            ₹{(f.amount || f.paidAmount || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td>
+                            <span className={`badge ${f.method === 'cash' ? 'warning' : (f.method === 'upi' ? 'success' : 'info')}`} style={{
+                              padding: '5px 8px',
+                              fontSize: '11px',
+                              fontWeight: '600'
+                            }}>
+                              {f.method === 'cash' && 'Cash'}
+                              {f.method === 'bank' && 'Bank'}
+                              {f.method === 'upi' && 'UPI'}
+                            </span>
+                            {f.bankName && (
+                              <div style={{ fontSize: '12px', color: '#475569', fontWeight: '500', marginTop: '4px' }}>
+                                {f.bankName}
+                              </div>
+                            )}
+                          </td>
+                          <td className="actions-cell" style={{ justifyContent: 'flex-end' }}>
+                            <button className="btn btn-small secondary" onClick={() => openEditForm('otherReceipt', f)}>
+                              <Edit2 size={12} />
+                              <span>Edit</span>
+                            </button>
+                            <button className="btn btn-small danger" onClick={() => deleteFee(f._id)}>
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'statement' && (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title-group">
+                  <div className="card-title-icon" style={{ color: '#0f766e', background: '#d8f5f1' }}>
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <h3>Statement</h3>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>Cash and bank entry summary for chosen dates</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', color: '#475569', fontWeight: '500' }}>From:</label>
+                    <input
+                      type="date"
+                      value={statementFilters.startDate}
+                      onChange={(e) => setStatementFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                      style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#ffffff', color: '#1e293b' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', color: '#475569', fontWeight: '500' }}>To:</label>
+                    <input
+                      type="date"
+                      value={statementFilters.endDate}
+                      onChange={(e) => setStatementFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                      style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#ffffff', color: '#1e293b' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ fontSize: '13px', color: '#475569', fontWeight: '500' }}>Source:</label>
+                    <select
+                      value={statementFilters.source}
+                      onChange={(e) => setStatementFilters(prev => ({ ...prev, source: e.target.value }))}
+                      style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#ffffff', color: '#1e293b', cursor: 'pointer' }}
+                    >
+                      <option value="">All Sources</option>
+                      {statementSourceOptions.map(source => (
+                        <option key={source} value={source}>{source}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '20px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: '#166534', textTransform: 'uppercase' }}>Total Entries</span>
+                  <h3 style={{ margin: '8px 0 0', fontSize: '22px', fontWeight: '800', color: '#14532d' }}>{statementFees.length}</h3>
+                </div>
+                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '20px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: '#1e40af', textTransform: 'uppercase' }}>Total Amount</span>
+                  <h3 style={{ margin: '8px 0 0', fontSize: '22px', fontWeight: '800', color: '#1e3a8a' }}>₹{statementFees.reduce((sum, f) => sum + (f.paidAmount || f.amount || 0), 0).toLocaleString('en-IN')}</h3>
+                </div>
+              </div>
+
+              {statementSourceList.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">
+                    <FileText size={32} />
+                  </div>
+                  <h4>No statement entries found</h4>
+                  <p>Use the date range filter to display Cash, Bank, or UPI receipts.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Source</th>
+                        <th>Entry Count</th>
+                        <th>Total Amount</th>
+                        <th>Batch / Course</th>
+                        <th>Person</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statementSourceList.map(group => (
+                        <tr key={group.source}>
+                          <td style={{ fontWeight: '600', color: '#0f172a' }}>{group.source}</td>
+                          <td style={{ fontWeight: '700', color: '#0f172a' }}>{group.count}</td>
+                          <td style={{ fontWeight: '700', color: '#0f172a' }}>₹{group.amount.toLocaleString('en-IN')}</td>
+                          <td style={{ color: '#64748b', fontSize: '14px' }}>
+                            {group.batches.length > 0 ? group.batches.join(', ') : '—'}
+                          </td>
+                          <td style={{ color: '#64748b', fontSize: '14px' }}>
+                            {group.persons.length > 0 ? group.persons.join(', ') : '—'}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1595,48 +1960,129 @@ export default function Dashboard({ onLogout }) {
                   <p>{searchQuery ? 'Adjust your keyword' : 'Create an expense log for bills, salaries, rent etc.'}</p>
                 </div>
               ) : (
-                <div className="table-container">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Expense Classification</th>
-                        <th>Payment Amount</th>
-                        <th>Log Date</th>
-                        <th>Explanatory Notes</th>
-                        <th style={{ textAlign: 'right' }}>Management Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredExpenses.map(e => (
-                        <tr key={e._id}>
-                          <td style={{ fontWeight: '600', color: '#0f172a' }}>{e.type}</td>
-                          <td style={{ fontWeight: '700', color: '#f43f5e' }}>
-                            ₹{e.amount?.toLocaleString('en-IN') || '0'}
-                          </td>
-                          <td style={{ color: '#64748b' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                              <Calendar size={12} />
-                              {new Date(e.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </span>
-                          </td>
-                          <td style={{ maxWidth: '280px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: '#64748b' }}>
-                            {e.notes || '—'}
-                          </td>
-                          <td className="actions-cell" style={{ justifyContent: 'flex-end' }}>
-                            <button className="btn btn-small secondary" onClick={() => openEditForm('expenses', e)}>
-                              <Edit2 size={12} />
-                              <span>Edit</span>
-                            </button>
-                            <button className="btn btn-small danger" onClick={() => deleteExpense(e._id)}>
-                              <Trash2 size={12} />
-                              <span>Delete</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div style={{ display: 'grid', gap: '24px' }}>
+                    <div className="card" style={{ padding: '0', border: '1px solid #e2e8f0' }}>
+                      <div className="card-header" style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <div className="card-title-group">
+                          <div className="card-title-icon" style={{ color: '#1d4ed8', background: '#dbeafe' }}>
+                            <Clipboard size={20} />
+                          </div>
+                          <div>
+                            <h3>Main Expenses</h3>
+                            <span style={{ fontSize: '12px', color: '#64748b' }}>{filteredMainExpenses.length} entries · ₹{filteredMainExpenses.reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {filteredMainExpenses.length === 0 ? (
+                        <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                          No main expense entries match the current filters.
+                        </div>
+                      ) : (
+                        <div className="table-container">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Classification</th>
+                                <th>Amount</th>
+                                <th>Date</th>
+                                <th>Notes</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredMainExpenses.map(e => (
+                                <tr key={e._id}>
+                                  <td style={{ fontWeight: '600', color: '#0f172a' }}>{e.type}</td>
+                                  <td style={{ fontWeight: '700', color: '#1d4ed8' }}>₹{e.amount?.toLocaleString('en-IN') || '0'}</td>
+                                  <td style={{ color: '#64748b' }}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                      <Calendar size={12} />
+                                      {new Date(e.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </td>
+                                  <td style={{ maxWidth: '220px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: '#64748b' }}>
+                                    {e.notes || '—'}
+                                  </td>
+                                  <td className="actions-cell" style={{ justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-small secondary" onClick={() => openEditForm('expenses', e)}>
+                                      <Edit2 size={12} />
+                                      <span>Edit</span>
+                                    </button>
+                                    <button className="btn btn-small danger" onClick={() => deleteExpense(e._id)}>
+                                      <Trash2 size={12} />
+                                      <span>Delete</span>
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="card" style={{ padding: '0', border: '1px solid #e2e8f0' }}>
+                      <div className="card-header" style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <div className="card-title-group">
+                          <div className="card-title-icon" style={{ color: '#2563eb', background: '#dbeafe' }}>
+                            <Archive size={20} />
+                          </div>
+                          <div>
+                            <h3>Other Expenses</h3>
+                            <span style={{ fontSize: '12px', color: '#64748b' }}>{filteredOtherExpenses.length} entries · ₹{filteredOtherExpenses.reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString('en-IN')}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {filteredOtherExpenses.length === 0 ? (
+                        <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
+                          No other expense entries match the current filters.
+                        </div>
+                      ) : (
+                        <div className="table-container">
+                          <table>
+                            <thead>
+                              <tr>
+                                <th>Title</th>
+                                <th>Amount</th>
+                                <th>Date</th>
+                                <th>Notes</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredOtherExpenses.map(e => (
+                                <tr key={e._id}>
+                                  <td style={{ fontWeight: '600', color: '#0f172a' }}>{e.type}</td>
+                                  <td style={{ fontWeight: '700', color: '#2563eb' }}>₹{e.amount?.toLocaleString('en-IN') || '0'}</td>
+                                  <td style={{ color: '#64748b' }}>
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                      <Calendar size={12} />
+                                      {new Date(e.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </td>
+                                  <td style={{ maxWidth: '220px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: '#64748b' }}>
+                                    {e.notes || '—'}
+                                  </td>
+                                  <td className="actions-cell" style={{ justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-small secondary" onClick={() => openEditForm('expenses', e)}>
+                                      <Edit2 size={12} />
+                                      <span>Edit</span>
+                                    </button>
+                                    <button className="btn btn-small danger" onClick={() => deleteExpense(e._id)}>
+                                      <Trash2 size={12} />
+                                      <span>Delete</span>
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -1668,29 +2114,50 @@ export default function Dashboard({ onLogout }) {
                     </div>
                     <div>
                       <h3 style={{ margin: 0, fontSize: '16px', fontWeight: '700', color: '#1e293b' }}>Daily Logs Ledger</h3>
-                      <span style={{ fontSize: '12px', color: '#64748b' }}>Track student receipts and office expenses for any day</span>
+                      <span style={{ fontSize: '12px', color: '#64748b' }}>Track payment receipts, other receipts, and expenses within a custom date range</span>
                     </div>
                   </div>
 
-                  {/* Target Date Picker */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '24px' }}>
-                    <label style={{ fontSize: '13px', color: '#475569', fontWeight: '600' }}>Select Date:</label>
-                    <input
-                      type="date"
-                      value={selectedLogDate}
-                      onChange={(e) => setSelectedLogDate(e.target.value)}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '13px',
-                        background: '#ffffff',
-                        color: '#1e293b',
-                        fontWeight: '600',
-                        outline: 'none',
-                        cursor: 'pointer'
-                      }}
-                    />
+                  {/* Date Range Filter */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: '24px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', color: '#475569', fontWeight: '600' }}>From:</label>
+                      <input
+                        type="date"
+                        value={logFilters.startDate}
+                        onChange={(e) => setLogFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '13px',
+                          background: '#ffffff',
+                          color: '#1e293b',
+                          fontWeight: '600',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <label style={{ fontSize: '13px', color: '#475569', fontWeight: '600' }}>To:</label>
+                      <input
+                        type="date"
+                        value={logFilters.endDate}
+                        onChange={(e) => setLogFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '13px',
+                          background: '#ffffff',
+                          color: '#1e293b',
+                          fontWeight: '600',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      />
+                    </div>
                   </div>
 
                   {/* Excel/CSV Export button */}
@@ -1728,7 +2195,7 @@ export default function Dashboard({ onLogout }) {
                 gap: '20px',
                 marginBottom: '24px'
               }}>
-                {/* Daily Inflow */}
+                {/* Payment Receipts */}
                 <div style={{
                   background: '#f0fdf4',
                   border: '1px solid #bbf7d0',
@@ -1742,15 +2209,37 @@ export default function Dashboard({ onLogout }) {
                     <Plus size={24} />
                   </div>
                   <div>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#166534', textTransform: 'uppercase' }}>Daily Cash Inflow</span>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#166534', textTransform: 'uppercase' }}>Payment Receipts</span>
                     <h3 style={{ margin: '4px 0 0 0', fontSize: '22px', fontWeight: '800', color: '#14532d' }}>
                       ₹{dailyFees.reduce((sum, f) => sum + (f.paidAmount || f.amount || 0), 0).toLocaleString('en-IN')}
                     </h3>
-                    <span style={{ fontSize: '11px', color: '#15803d' }}>{dailyFees.length} Fee receipts logged</span>
+                    <span style={{ fontSize: '11px', color: '#15803d' }}>{dailyFees.length} entries</span>
                   </div>
                 </div>
 
-                {/* Daily Outflow */}
+                {/* Other Receipts */}
+                <div style={{
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px'
+                }}>
+                  <div style={{ background: '#dbeafe', color: '#2563eb', padding: '10px', borderRadius: '10px' }}>
+                    <FileText size={24} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#1e40af', textTransform: 'uppercase' }}>Other Receipts</span>
+                    <h3 style={{ margin: '4px 0 0 0', fontSize: '22px', fontWeight: '800', color: '#1e3a8a' }}>
+                      ₹{dailyOtherReceipts.reduce((sum, f) => sum + (f.amount || f.paidAmount || 0), 0).toLocaleString('en-IN')}
+                    </h3>
+                    <span style={{ fontSize: '11px', color: '#1d4ed8' }}>{dailyOtherReceipts.length} entries</span>
+                  </div>
+                </div>
+
+                {/* Office Expenses */}
                 <div style={{
                   background: '#fef2f2',
                   border: '1px solid #fecaca',
@@ -1764,64 +2253,28 @@ export default function Dashboard({ onLogout }) {
                     <TrendingDown size={24} />
                   </div>
                   <div>
-                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#991b1b', textTransform: 'uppercase' }}>Daily Expense Outflow</span>
+                    <span style={{ fontSize: '12px', fontWeight: '600', color: '#991b1b', textTransform: 'uppercase' }}>Office Expenses</span>
                     <h3 style={{ margin: '4px 0 0 0', fontSize: '22px', fontWeight: '800', color: '#7f1d1d' }}>
                       ₹{dailyExpenses.reduce((sum, e) => sum + (e.amount || 0), 0).toLocaleString('en-IN')}
                     </h3>
-                    <span style={{ fontSize: '11px', color: '#b91c1c' }}>{dailyExpenses.length} Expenses logged</span>
+                    <span style={{ fontSize: '11px', color: '#b91c1c' }}>{dailyExpenses.length} entries</span>
                   </div>
                 </div>
-
-                {/* Net Balance */}
-                {(() => {
-                  const totalIn = dailyFees.reduce((sum, f) => sum + (f.paidAmount || f.amount || 0), 0);
-                  const totalOut = dailyExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-                  const net = totalIn - totalOut;
-                  return (
-                    <div style={{
-                      background: net >= 0 ? '#eff6ff' : '#fff7ed',
-                      border: net >= 0 ? '1px solid #bfdbfe' : '1px solid #fed7aa',
-                      borderRadius: '12px',
-                      padding: '20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '16px'
-                    }}>
-                      <div style={{
-                        background: net >= 0 ? '#dbeafe' : '#ffedd5',
-                        color: net >= 0 ? '#2563eb' : '#ea580c',
-                        padding: '10px',
-                        borderRadius: '10px'
-                      }}>
-                        <Wallet size={24} />
-                      </div>
-                      <div>
-                        <span style={{ fontSize: '12px', fontWeight: '600', color: net >= 0 ? '#1e40af' : '#9a3412', textTransform: 'uppercase' }}>Net Cash Balance</span>
-                        <h3 style={{ margin: '4px 0 0 0', fontSize: '22px', fontWeight: '800', color: net >= 0 ? '#1e3a8a' : '#7c2d12' }}>
-                          {net < 0 ? '-' : ''}₹{Math.abs(net).toLocaleString('en-IN')}
-                        </h3>
-                        <span style={{ fontSize: '11px', color: net >= 0 ? '#1d4ed8' : '#c2410c' }}>
-                          {net >= 0 ? 'Net Surplus Day' : 'Net Deficit Day'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* Side-by-side Tables Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
                 
                 {/* Inflow Card (Fees) */}
                 <div className="card">
                   <div className="card-header" style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ color: '#16a34a' }}>●</span> Inflow: Student Receipts
+                      <span style={{ color: '#16a34a' }}>●</span> Payment Receipts
                     </h3>
                   </div>
                   {dailyFees.length === 0 ? (
                     <div style={{ padding: '40px 24px', textAlign: 'center', color: '#64748b' }}>
-                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '500' }}>No fee entries logged on this date.</p>
+                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '500' }}>No payment receipts logged for the selected range.</p>
                     </div>
                   ) : (
                     <div className="table-container" style={{ margin: 0, border: 'none', borderRadius: 0 }}>
@@ -1857,16 +2310,55 @@ export default function Dashboard({ onLogout }) {
                   )}
                 </div>
 
+                {/* Other Receipts Card */}
+                <div className="card">
+                  <div className="card-header" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: '#2563eb' }}>●</span> Other Receipts
+                    </h3>
+                  </div>
+                  {dailyOtherReceipts.length === 0 ? (
+                    <div style={{ padding: '40px 24px', textAlign: 'center', color: '#64748b' }}>
+                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '500' }}>No other receipts logged for the selected range.</p>
+                    </div>
+                  ) : (
+                    <div className="table-container" style={{ margin: 0, border: 'none', borderRadius: 0 }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Title</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dailyOtherReceipts.map(f => (
+                            <tr key={f._id}>
+                              <td style={{ fontWeight: '600' }}>{f.title || 'Other Receipt'}</td>
+                              <td style={{ color: '#64748b', fontSize: '12px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {f.description || '—'}
+                              </td>
+                              <td style={{ fontWeight: '700', color: '#2563eb' }}>
+                                ₹{(f.amount || f.paidAmount || 0).toLocaleString('en-IN')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
                 {/* Outflow Card (Expenses) */}
                 <div className="card">
                   <div className="card-header" style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ color: '#f43f5e' }}>●</span> Outflow: Office Expenses
+                      <span style={{ color: '#f43f5e' }}>●</span> Expenses
                     </h3>
                   </div>
                   {dailyExpenses.length === 0 ? (
                     <div style={{ padding: '40px 24px', textAlign: 'center', color: '#64748b' }}>
-                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '500' }}>No expense entries logged on this date.</p>
+                      <p style={{ margin: 0, fontSize: '13px', fontWeight: '500' }}>No expense entries logged for the selected range.</p>
                     </div>
                   ) : (
                     <div className="table-container" style={{ margin: 0, border: 'none', borderRadius: 0 }}>
@@ -1908,7 +2400,7 @@ export default function Dashboard({ onLogout }) {
           <div className="modal-header">
             <h3>
               {showModal === 'students' && (editingId ? 'Modify Student Details' : 'Enroll New Student')}
-              {showModal === 'fees' && (editingId ? 'Modify Fee Transaction' : 'Record Student Payment')}
+              {(showModal === 'fees' || showModal === 'otherReceipt') && (editingId ? 'Modify Receipt Details' : (formData.receiptType === 'other' ? 'Record Other Receipt' : 'Record Student Payment'))}
               {showModal === 'courses' && (editingId ? 'Modify Course details' : 'Register New Course')}
               {showModal === 'expenses' && (editingId ? 'Modify Expense details' : 'Log Operational Expense')}
             </h3>
@@ -1998,8 +2490,8 @@ export default function Dashboard({ onLogout }) {
             </form>
           )}
 
-          {showModal === 'fees' && (() => {
-            // Filter students based on selected course
+          {(showModal === 'fees' || showModal === 'otherReceipt') && (() => {
+            const isOtherReceipt = formData.receiptType === 'other';
             const selectedCourseId = formData.course || '';
             const filteredStudentsForFee = students.filter(s => {
               const studentCourseId = s.course?._id || s.course || '';
@@ -2027,165 +2519,204 @@ export default function Dashboard({ onLogout }) {
 
             return (
               <form onSubmit={saveFee}>
-                {/* Course Selection */}
-                <div className="form-group">
-                  <label>Select Course / Batch *</label>
-                  <select 
-                    name="course" 
-                    value={formData.course || ''} 
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setFormData(prev => ({
-                        ...prev,
-                        course: value,
-                        student: '', // Reset student selection when course changes
-                        totalAmount: undefined,
-                        paidAmount: ''
-                      }));
-                    }}
-                    required
-                    disabled={!!editingId}
-                    style={editingId ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
-                  >
-                    <option value="">Select a Course / Batch</option>
-                    {courses.map(c => (
-                      <option key={c._id} value={c._id}>
-                        {c.name} ({c.classId || 'No Code'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {!isOtherReceipt ? (
+                  <>
+                    {/* Course Selection */}
+                    <div className="form-group">
+                      <label>Select Course / Batch *</label>
+                      <select 
+                        name="course" 
+                        value={formData.course || ''} 
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            course: value,
+                            student: '', // Reset student selection when course changes
+                            totalAmount: undefined,
+                            paidAmount: ''
+                          }));
+                        }}
+                        required
+                        disabled={!!editingId}
+                        style={editingId ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
+                      >
+                        <option value="">Select a Course / Batch</option>
+                        {courses.map(c => (
+                          <option key={c._id} value={c._id}>
+                            {c.name} ({c.classId || 'No Code'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                {/* Enrolled Students Selection */}
-                <div className="form-group">
-                  <label>Select Enrolled Student *</label>
-                  <select 
-                    name="student" 
-                    value={formData.student || ''} 
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setFormData(prev => ({
-                        ...prev,
-                        student: value,
-                        totalAmount: undefined,
-                        paidAmount: ''
-                      }));
-                    }} 
-                    required
-                    disabled={!!editingId}
-                    style={editingId ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
-                  >
-                    <option value="">
-                      {selectedCourseId 
-                        ? `Select Student (${filteredStudentsForFee.length} Enrolled)` 
-                        : 'Select Student (Select Course first)'
-                      }
-                    </option>
-                    {filteredStudentsForFee.map(s => (
-                      <option key={s._id} value={s._id}>
-                        {s.name} {s.contact ? `(Ph: ${s.contact})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    {/* Enrolled Students Selection */}
+                    <div className="form-group">
+                      <label>Select Enrolled Student *</label>
+                      <select 
+                        name="student" 
+                        value={formData.student || ''} 
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            student: value,
+                            totalAmount: undefined,
+                            paidAmount: ''
+                          }));
+                        }} 
+                        required
+                        disabled={!!editingId}
+                        style={editingId ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
+                      >
+                        <option value="">
+                          {selectedCourseId 
+                            ? `Select Student (${filteredStudentsForFee.length} Enrolled)` 
+                            : 'Select Student (Select Course first)'
+                          }
+                        </option>
+                        {filteredStudentsForFee.map(s => (
+                          <option key={s._id} value={s._id}>
+                            {s.name} {s.contact ? `(Ph: ${s.contact})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                {/* Optional payment history lookup display */}
-                {selectedStudentId && (
-                  totalPaidSoFar > 0 ? (
-                    <div style={{
-                      background: '#f0f6ff',
-                      border: '1px solid #bfdbfe',
-                      borderRadius: '10px',
-                      padding: '12px 16px',
-                      marginBottom: '16px'
-                    }}>
-                      <h4 style={{ color: '#1e40af', margin: 0, fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>📋</span> Student Payment History Found
-                      </h4>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px', color: '#1e3a8a', marginTop: '8px' }}>
-                        <div>Course Price: <strong>₹{total.toLocaleString('en-IN')}</strong></div>
-                        <div>Already Paid: <strong style={{ color: '#16a34a' }}>₹{totalPaidSoFar.toLocaleString('en-IN')}</strong></div>
-                        <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #bfdbfe', paddingTop: '6px', marginTop: '2px', fontWeight: '600' }}>
-                          Remaining Due Before Today: <span style={{ color: currentRemaining === 0 ? '#16a34a' : '#ea580c' }}>₹{currentRemaining.toLocaleString('en-IN')}</span>
+                    {/* Optional payment history lookup display */}
+                    {selectedStudentId && (
+                      totalPaidSoFar > 0 ? (
+                        <div style={{
+                          background: '#f0f6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '10px',
+                          padding: '12px 16px',
+                          marginBottom: '16px'
+                        }}>
+                          <h4 style={{ color: '#1e40af', margin: 0, fontSize: '13px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>📋</span> Student Payment History Found
+                          </h4>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px', color: '#1e3a8a', marginTop: '8px' }}>
+                            <div>Course Price: <strong>₹{total.toLocaleString('en-IN')}</strong></div>
+                            <div>Already Paid: <strong style={{ color: '#16a34a' }}>₹{totalPaidSoFar.toLocaleString('en-IN')}</strong></div>
+                            <div style={{ gridColumn: 'span 2', borderTop: '1px dashed #bfdbfe', paddingTop: '6px', marginTop: '2px', fontWeight: '600' }}>
+                              Remaining Due Before Today: <span style={{ color: currentRemaining === 0 ? '#16a34a' : '#ea580c' }}>₹{currentRemaining.toLocaleString('en-IN')}</span>
+                            </div>
+                          </div>
                         </div>
+                      ) : (
+                        <div style={{
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '10px',
+                          padding: '12px 16px',
+                          marginBottom: '16px',
+                          textAlign: 'center',
+                          fontSize: '12px',
+                          color: '#64748b',
+                          fontWeight: '500'
+                        }}>
+                          🎉 First fee entry for this student.
+                        </div>
+                      )
+                    )}
+
+                    {/* Fees Amount Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div className="form-group">
+                        <label>Total Course Fees (INR) *</label>
+                        <input 
+                          name="totalAmount" 
+                          type="number" 
+                          placeholder="e.g. 20000"
+                          value={formData.totalAmount !== undefined ? formData.totalAmount : (existingTotalAmount || '')} 
+                          onChange={handleInputChange} 
+                          required 
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>New Payment Received Now (INR) *</label>
+                        <input 
+                          name="paidAmount" 
+                          type="number" 
+                          placeholder="e.g. 5000"
+                          value={formData.paidAmount || ''} 
+                          onChange={handleInputChange} 
+                          required 
+                        />
                       </div>
                     </div>
-                  ) : (
-                    <div style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '10px',
-                      padding: '12px 16px',
-                      marginBottom: '16px',
-                      textAlign: 'center',
-                      fontSize: '12px',
-                      color: '#64748b',
-                      fontWeight: '500'
-                    }}>
-                      🎉 First fee entry for this student.
-                    </div>
-                  )
-                )}
 
-                {/* Fees Amount Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div className="form-group">
-                    <label>Total Course Fees (INR) *</label>
-                    <input 
-                      name="totalAmount" 
-                      type="number" 
-                      placeholder="e.g. 20000"
-                      value={formData.totalAmount !== undefined ? formData.totalAmount : (existingTotalAmount || '')} 
-                      onChange={handleInputChange} 
-                      required 
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>New Payment Received Now (INR) *</label>
-                    <input 
-                      name="paidAmount" 
-                      type="number" 
-                      placeholder="e.g. 5000"
-                      value={formData.paidAmount || ''} 
-                      onChange={handleInputChange} 
-                      required 
-                    />
-                  </div>
-                </div>
-
-                {/* Live Remaining Fees Preview */}
-                {selectedStudentId && (
-                  <div style={{
-                    background: newRemaining === 0 ? '#f0fdf4' : '#fff7ed',
-                    border: newRemaining === 0 ? '1px solid #bbf7d0' : '1px solid #fed7aa',
-                    borderRadius: '10px',
-                    padding: '12px 16px',
-                    marginBottom: '20px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <span style={{ fontSize: '12px', color: newRemaining === 0 ? '#15803d' : '#c2410c', fontWeight: '500' }}>
-                        New Remaining Balance after today's payment
-                      </span>
-                      <span style={{ fontSize: '20px', fontWeight: '700', color: newRemaining === 0 ? '#166534' : '#9a3412', marginTop: '2px' }}>
-                        ₹{newRemaining.toLocaleString('en-IN')}
-                      </span>
+                    {/* Live Remaining Fees Preview */}
+                    {selectedStudentId && (
+                      <div style={{
+                        background: newRemaining === 0 ? '#f0fdf4' : '#fff7ed',
+                        border: newRemaining === 0 ? '1px solid #bbf7d0' : '1px solid #fed7aa',
+                        borderRadius: '10px',
+                        padding: '12px 16px',
+                        marginBottom: '20px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '12px', color: newRemaining === 0 ? '#15803d' : '#c2410c', fontWeight: '500' }}>
+                            New Remaining Balance after today's payment
+                          </span>
+                          <span style={{ fontSize: '20px', fontWeight: '700', color: newRemaining === 0 ? '#166534' : '#9a3412', marginTop: '2px' }}>
+                            ₹{newRemaining.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.05em',
+                          padding: '4px 8px',
+                          borderRadius: '20px',
+                          background: newRemaining === 0 ? '#dcfce7' : '#ffedd5',
+                          color: newRemaining === 0 ? '#15803d' : '#ea580c'
+                        }}>
+                          {newRemaining === 0 ? 'Fully Paid' : 'Pending Dues'}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="form-group">
+                      <label>Receipt Title *</label>
+                      <input
+                        name="title"
+                        type="text"
+                        placeholder="e.g. Misc payment, donation, custom receipt"
+                        value={formData.title || ''}
+                        onChange={handleInputChange}
+                        required
+                      />
                     </div>
-                    <span style={{
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                      padding: '4px 8px',
-                      borderRadius: '20px',
-                      background: newRemaining === 0 ? '#dcfce7' : '#ffedd5',
-                      color: newRemaining === 0 ? '#15803d' : '#ea580c'
-                    }}>
-                      {newRemaining === 0 ? 'Fully Paid' : 'Pending Dues'}
-                    </span>
-                  </div>
+                    <div className="form-group">
+                      <label>Receipt Description</label>
+                      <input
+                        name="description"
+                        type="text"
+                        placeholder="Describe the receipt details"
+                        value={formData.description || ''}
+                        onChange={handleInputChange}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Amount Received (INR) *</label>
+                      <input
+                        name="amount"
+                        type="number"
+                        placeholder="e.g. 4500"
+                        value={formData.amount || ''}
+                        onChange={handleInputChange}
+                        required
+                      />
+                    </div>
+                  </>
                 )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -2324,7 +2855,7 @@ export default function Dashboard({ onLogout }) {
 
                 <div className="form-actions">
                   <button type="submit" className="btn" style={{ background: '#10b981', boxShadow: '0 4px 10px rgba(16, 185, 129, 0.15)' }}>
-                    {editingId ? 'Update Receipt Details' : 'Record Fees Receipt'}
+                    {editingId ? 'Update Receipt Details' : (formData.receiptType === 'other' ? 'Record Other Receipt' : 'Record Payment Receipt')}
                   </button>
                   <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
                 </div>
@@ -2446,92 +2977,70 @@ export default function Dashboard({ onLogout }) {
 
           {showModal === 'expenses' && (
             <form onSubmit={saveExpense}>
-              {/* Expense Category Selector / Combobox */}
-              <div className="form-group" style={{ position: 'relative' }}>
-                <label>Expense Category / Title *</label>
-                <div style={{ position: 'relative' }}>
-                  <input 
-                    name="type" 
-                    type="text"
-                    placeholder="e.g. Office Rent, Printing, Faculty Salary..."
-                    value={formData.type || ''} 
-                    onChange={handleInputChange} 
-                    onFocus={() => setShowExpenseDropdown(true)}
-                    onBlur={() => setTimeout(() => setShowExpenseDropdown(false), 250)}
-                    required 
-                    autoComplete="off"
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    right: '12px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    pointerEvents: 'none',
-                    color: '#94a3b8',
-                    fontSize: '10px'
-                  }}>
-                    ▼
-                  </div>
-                  {showExpenseDropdown && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      right: 0,
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '8px',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-                      maxHeight: '160px',
-                      overflowY: 'auto',
-                      zIndex: 100,
-                      marginTop: '4px'
-                    }}>
-                      {(() => {
-                        const uniqueTypes = Array.from(new Set(expenses.map(exp => exp.type).filter(Boolean)));
-                        const searchVal = formData.type || '';
-                        const matchingTypes = uniqueTypes.filter(t => t.toLowerCase().includes(searchVal.toLowerCase()));
-                        
-                        return (
-                          <>
-                            {matchingTypes.map((category, index) => (
-                              <div 
-                                key={index} 
-                                onMouseDown={() => {
-                                  setFormData(prev => ({ ...prev, type: category }));
-                                }}
-                                style={{
-                                  padding: '10px 14px',
-                                  cursor: 'pointer',
-                                  fontSize: '14px',
-                                  color: '#1e293b',
-                                  borderBottom: index !== matchingTypes.length - 1 ? '1px solid #f1f5f9' : 'none'
-                                }}
-                                onMouseEnter={(e) => e.target.style.background = '#f8fafc'}
-                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                              >
-                                {category}
-                              </div>
-                            ))}
-                            {matchingTypes.length === 0 && (
-                              <div style={{
-                                padding: '10px 14px',
-                                fontSize: '13px',
-                                color: '#64748b',
-                                fontStyle: 'italic'
-                              }}>
-                                {searchVal ? `"${searchVal}" will be saved as new` : 'Type to add new...'}
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '18px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, expenseType: 'main', customTitle: '' }))}
+                  className={`btn ${formData.expenseType === 'main' ? '' : 'secondary'}`}
+                  style={{ minWidth: '150px' }}
+                >
+                  Main Expense
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, expenseType: 'other', category: '' }))}
+                  className={`btn ${formData.expenseType === 'other' ? '' : 'secondary'}`}
+                  style={{ minWidth: '150px' }}
+                >
+                  Other Expense
+                </button>
               </div>
 
-              {/* Amount and Date side-by-side in grid */}
+              {formData.expenseType === 'main' ? (
+                <div className="form-group">
+                  <label>Main Expense Category *</label>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px' }}>
+                    {mainExpenseCategories.map(category => (
+                      <button
+                        key={category}
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, category }))}
+                        className={formData.category === category ? 'btn' : 'btn secondary'}
+                        style={{ minWidth: '140px', whiteSpace: 'normal' }}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
+                  <input type="hidden" name="category" value={formData.category || ''} />
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label>Other Expense Title *</label>
+                  <input
+                    name="customTitle"
+                    type="text"
+                    placeholder="Describe the expense, e.g. printer repair"
+                    value={formData.customTitle || ''}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>{formData.expenseType === 'other' ? 'Expense Details' : 'Optional Reference'}</label>
+                <input
+                  name="notes"
+                  type="text"
+                  placeholder={formData.expenseType === 'other'
+                    ? 'What happened? Why this expense?' 
+                    : 'Vendor, bill number, or payment note'}
+                  value={formData.notes || ''}
+                  onChange={handleInputChange}
+                />
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label>Amount (INR) *</label>
@@ -2556,17 +3065,6 @@ export default function Dashboard({ onLogout }) {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label>Detailed Notes</label>
-                <textarea 
-                  name="notes" 
-                  placeholder="Specify bill details, vendor name, or other details..."
-                  rows={3}
-                  value={formData.notes || ''} 
-                  onChange={handleInputChange} 
-                />
-              </div>
-              
               <div className="form-actions">
                 <button type="submit" className="btn" style={{ background: '#f43f5e', boxShadow: '0 4px 10px rgba(244, 63, 94, 0.15)' }}>
                   {editingId ? 'Update Expense Details' : 'Log Office Expense'}
