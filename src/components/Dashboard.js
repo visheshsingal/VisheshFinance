@@ -20,7 +20,8 @@ import {
   Layers,
   FileText,
   Clipboard,
-  Archive
+  Archive,
+  RotateCcw
 } from 'lucide-react';
 
 export default function Dashboard({ onLogout }) {
@@ -29,6 +30,7 @@ export default function Dashboard({ onLogout }) {
   const [fees, setFees] = useState([]);
   const [courses, setCourses] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [refunds, setRefunds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -45,6 +47,7 @@ export default function Dashboard({ onLogout }) {
   // Dynamic advanced filter states
   const [studentFilters, setStudentFilters] = useState({ startDate: '', endDate: '', course: '' });
   const [expenseFilters, setExpenseFilters] = useState({ startDate: '', endDate: '', classification: '' });
+  const [refundFilters, setRefundFilters] = useState({ startDate: '', endDate: '' });
   const mainExpenseCategories = ['Electricity Bill', 'Office Rent', 'Staff Salary'];
   const [feeFilters, setFeeFilters] = useState({ startDate: '', endDate: '', course: '', bankName: '', method: '', student: '' });
   
@@ -64,16 +67,18 @@ export default function Dashboard({ onLogout }) {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [s, f, c, e] = await Promise.all([
+      const [s, f, c, e, r] = await Promise.all([
         API.get('/students'),
         API.get('/fees'),
         API.get('/courses'),
-        API.get('/expenses')
+        API.get('/expenses'),
+        API.get('/refunds')
       ]);
       setStudents(s.data || []);
       setFees(f.data || []);
       setCourses(c.data || []);
       setExpenses(e.data || []);
+      setRefunds(r.data || []);
       setError('');
     } catch (err) {
       setError('Failed to load data from backend server');
@@ -198,6 +203,13 @@ export default function Dashboard({ onLogout }) {
         date: new Date().toISOString().split('T')[0],
         notes: ''
       });
+    } else if (type === 'refunds') {
+      setFormData({
+        course: '',
+        student: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0]
+      });
     } else {
       setFormData({});
     }
@@ -249,6 +261,13 @@ export default function Dashboard({ onLogout }) {
         customTitle: isMainCategory ? '' : item.type,
         amount: item.amount || 0,
         notes: item.notes || '',
+        date: item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]
+      });
+    } else if (type === 'refunds') {
+      setFormData({
+        course: item.student?.course?._id || item.student?.course || '',
+        student: item.student?._id || item.student || '',
+        amount: item.amount || 0,
         date: item.date ? item.date.split('T')[0] : new Date().toISOString().split('T')[0]
       });
     } else {
@@ -450,6 +469,50 @@ export default function Dashboard({ onLogout }) {
     }
   };
 
+  const saveRefund = async (e) => {
+    e.preventDefault();
+    if (!formData.course) {
+      setError('Please select a batch');
+      return;
+    }
+    if (!formData.student) {
+      setError('Please select a student');
+      return;
+    }
+    if (!formData.amount || parseFloat(formData.amount) <= 0) {
+      setError('Enter a valid refund amount');
+      return;
+    }
+    try {
+      setError('');
+      const data = {
+        student: formData.student,
+        amount: parseFloat(formData.amount) || 0,
+        date: formData.date || new Date().toISOString()
+      };
+      if (editingId) {
+        await API.put(`/refunds/${editingId}`, data);
+      } else {
+        await API.post('/refunds', data);
+      }
+      fetchAll();
+      closeModal();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to save refund record');
+    }
+  };
+
+  const deleteRefund = async (id) => {
+    if (window.confirm('Are you sure you want to delete this refund record?')) {
+      try {
+        await API.delete(`/refunds/${id}`);
+        fetchAll();
+      } catch (err) {
+        setError('Failed to delete refund record');
+      }
+    }
+  };
+
   // CSV Export utility
   const exportToCSV = (data, headers, filename) => {
     if (!data || !data.length) {
@@ -541,6 +604,17 @@ export default function Dashboard({ onLogout }) {
     exportToCSV(csvData, headers, "office_operational_expenses");
   };
 
+  const exportRefunds = () => {
+    const headers = ['Batch', 'Student', 'Refund Amount (INR)', 'Date'];
+    const csvData = filteredRefunds.map(r => ({
+      Batch: r.student?.course?.name || '—',
+      Student: r.student?.name || '—',
+      'Refund Amount (INR)': r.amount || 0,
+      Date: r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—'
+    }));
+    exportToCSV(csvData, headers, 'refunds_ledger');
+  };
+
   const isInLogRange = (dateString) => {
     if (!dateString) return false;
     const itemDate = new Date(dateString).toISOString().split('T')[0];
@@ -616,6 +690,7 @@ export default function Dashboard({ onLogout }) {
   const totalFees = fees.reduce((sum, f) => sum + (f.paidAmount || f.amount || 0), 0);
   const totalCourses = courses.length;
   const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const totalRefunds = refunds.reduce((sum, r) => sum + (r.amount || 0), 0);
  
   // Search and Advanced filter logic
   const filteredStudents = students.filter(s => {
@@ -757,6 +832,33 @@ export default function Dashboard({ onLogout }) {
   const filteredMainExpenses = filteredExpenses.filter(e => mainExpenseCategories.includes(e.type));
   const filteredOtherExpenses = filteredExpenses.filter(e => !mainExpenseCategories.includes(e.type));
 
+  const filteredRefunds = refunds.filter(r => {
+    const matchesSearch = !searchQuery ||
+      r.student?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.student?.course?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.student?.classId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (r.amount || 0).toString().includes(searchQuery);
+
+    if (!matchesSearch) return false;
+
+    if (refundFilters.startDate || refundFilters.endDate) {
+      const dateVal = r.date ? new Date(r.date) : null;
+      if (!dateVal) return false;
+      if (refundFilters.startDate) {
+        const start = new Date(refundFilters.startDate);
+        start.setHours(0, 0, 0, 0);
+        if (dateVal < start) return false;
+      }
+      if (refundFilters.endDate) {
+        const end = new Date(refundFilters.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (dateVal > end) return false;
+      }
+    }
+
+    return true;
+  });
+
   const statementFees = fees.filter(f => {
     if (!f.date) return false;
     const itemDate = new Date(f.date).toISOString().split('T')[0];
@@ -870,6 +972,14 @@ export default function Dashboard({ onLogout }) {
           </button>
 
           <button 
+            className={`menu-item ${activeTab === 'refunds' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('refunds'); setSearchQuery(''); setIsSidebarOpen(false); }}
+          >
+            <RotateCcw size={18} />
+            <span>Refunds</span>
+          </button>
+
+          <button 
             className={`menu-item ${activeTab === 'dailyLogs' ? 'active' : ''}`}
             onClick={() => { setActiveTab('dailyLogs'); setSearchQuery(''); setIsSidebarOpen(false); }}
           >
@@ -908,6 +1018,7 @@ export default function Dashboard({ onLogout }) {
                 {activeTab === 'otherReceipts' && 'Other Receipts'}
                 {activeTab === 'courses' && 'Academy Courses'}
                 {activeTab === 'expenses' && 'Corporate Expenses'}
+                {activeTab === 'refunds' && 'Refunds'}
                 {activeTab === 'statement' && 'Statement'}
                 {activeTab === 'dailyLogs' && 'Daily Activity Logs'}
               </h2>
@@ -977,6 +1088,16 @@ export default function Dashboard({ onLogout }) {
               </div>
               <div className="stat-icon-wrapper">
                 <TrendingDown size={24} />
+              </div>
+            </div>
+
+            <div className="stat-card refunds">
+              <div className="stat-info">
+                <span className="stat-label">Total Refunded</span>
+                <span className="stat-value">₹{totalRefunds.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="stat-icon-wrapper">
+                <RotateCcw size={24} />
               </div>
             </div>
           </div>
@@ -1797,6 +1918,162 @@ export default function Dashboard({ onLogout }) {
             </div>
           )}
 
+          {/* Refunds Tracking Component */}
+          {activeTab === 'refunds' && (
+            <div className="card">
+              <div className="card-header">
+                <div className="card-title-group">
+                  <div className="card-title-icon" style={{ color: '#ea580c', background: '#ffedd5' }}>
+                    <RotateCcw size={20} />
+                  </div>
+                  <div>
+                    <h3>Refund Ledger</h3>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>
+                      {filteredRefunds.length} entries · ₹{filteredRefunds.reduce((sum, r) => sum + (r.amount || 0), 0).toLocaleString('en-IN')} filtered
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}>
+                  <div className="search-wrapper">
+                    <Search size={16} className="search-icon-inside" />
+                    <input
+                      type="text"
+                      className="search-input"
+                      placeholder="Search refunds..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <button className="btn" onClick={() => openAddForm('refunds')} style={{ background: '#ea580c', boxShadow: '0 4px 10px rgba(234, 88, 12, 0.15)' }}>
+                    <Plus size={16} />
+                    <span>Record Refund</span>
+                  </button>
+                </div>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                gap: '16px',
+                padding: '16px 24px',
+                background: '#f8fafc',
+                borderBottom: '1px solid #e2e8f0',
+                flexWrap: 'wrap',
+                alignItems: 'center'
+              }}>
+                <span style={{ fontSize: '13px', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Filters:
+                </span>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', color: '#475569', fontWeight: '500' }}>From:</label>
+                  <input
+                    type="date"
+                    value={refundFilters.startDate}
+                    onChange={(e) => setRefundFilters(prev => ({ ...prev, startDate: e.target.value }))}
+                    style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '13px', color: '#475569', fontWeight: '500' }}>To:</label>
+                  <input
+                    type="date"
+                    value={refundFilters.endDate}
+                    onChange={(e) => setRefundFilters(prev => ({ ...prev, endDate: e.target.value }))}
+                    style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                  />
+                </div>
+
+                {(refundFilters.startDate || refundFilters.endDate) && (
+                  <button
+                    onClick={() => setRefundFilters({ startDate: '', endDate: '' })}
+                    style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '13px', fontWeight: '500', cursor: 'pointer' }}
+                  >
+                    Reset Filters
+                  </button>
+                )}
+
+                <button
+                  onClick={exportRefunds}
+                  style={{
+                    background: '#10b981',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '6px',
+                    marginLeft: 'auto'
+                  }}
+                >
+                  <FileText size={14} />
+                  <span>Download CSV</span>
+                </button>
+              </div>
+
+              {filteredRefunds.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">
+                    <RotateCcw size={32} />
+                  </div>
+                  <h4>No refunds recorded</h4>
+                  <p>{searchQuery ? 'Try adjusting your search or filters' : 'Record your first refund entry.'}</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Batch</th>
+                        <th>Student</th>
+                        <th>Refund Date</th>
+                        <th>Amount Refunded</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRefunds.map(r => (
+                        <tr key={r._id}>
+                          <td style={{ fontWeight: '600', color: '#0f172a' }}>
+                            {r.student?.course?.name || '—'}
+                            {r.student?.classId ? (
+                              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{r.student.classId}</div>
+                            ) : null}
+                          </td>
+                          <td style={{ fontWeight: '600', color: '#0f172a' }}>{r.student?.name || '—'}</td>
+                          <td style={{ color: '#64748b' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <Calendar size={12} />
+                              {r.date ? new Date(r.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                            </span>
+                          </td>
+                          <td style={{ fontWeight: '700', color: '#ea580c', fontSize: '15px' }}>
+                            ₹{(r.amount || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="actions-cell" style={{ justifyContent: 'flex-end' }}>
+                            <button className="btn btn-small secondary" onClick={() => openEditForm('refunds', r)}>
+                              <Edit2 size={12} />
+                              <span>Edit</span>
+                            </button>
+                            <button className="btn btn-small danger" onClick={() => deleteRefund(r._id)}>
+                              <Trash2 size={12} />
+                              <span>Delete</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Expenses Tracking Component */}
           {activeTab === 'expenses' && (
             <div className="card">
@@ -2403,6 +2680,7 @@ export default function Dashboard({ onLogout }) {
               {(showModal === 'fees' || showModal === 'otherReceipt') && (editingId ? 'Modify Receipt Details' : (formData.receiptType === 'other' ? 'Record Other Receipt' : 'Record Student Payment'))}
               {showModal === 'courses' && (editingId ? 'Modify Course details' : 'Register New Course')}
               {showModal === 'expenses' && (editingId ? 'Modify Expense details' : 'Log Operational Expense')}
+              {showModal === 'refunds' && (editingId ? 'Modify Refund' : 'Record Refund')}
             </h3>
             <button className="modal-close" onClick={closeModal}>
               <X size={16} />
@@ -2974,6 +3252,92 @@ export default function Dashboard({ onLogout }) {
               </div>
             </form>
           )}
+
+          {showModal === 'refunds' && (() => {
+            const selectedCourseId = formData.course || '';
+            const studentsInBatch = students.filter(s => (s.course?._id || s.course || '') === selectedCourseId);
+
+            return (
+            <form onSubmit={saveRefund}>
+              <div className="form-group">
+                <label>Select Batch *</label>
+                <select
+                  name="course"
+                  value={formData.course || ''}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    course: e.target.value,
+                    student: ''
+                  }))}
+                  required
+                  disabled={!!editingId}
+                  style={editingId ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
+                >
+                  <option value="">Select a Batch</option>
+                  {courses.map(c => (
+                    <option key={c._id} value={c._id}>
+                      {c.name}{c.classId ? ` (${c.classId})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Select Student *</label>
+                <select
+                  name="student"
+                  value={formData.student || ''}
+                  onChange={handleInputChange}
+                  required
+                  disabled={!selectedCourseId || !!editingId}
+                  style={(!selectedCourseId || editingId) ? { background: '#f1f5f9', cursor: 'not-allowed' } : {}}
+                >
+                  <option value="">
+                    {selectedCourseId
+                      ? `Select Student (${studentsInBatch.length} enrolled)`
+                      : 'Select batch first'}
+                  </option>
+                  {studentsInBatch.map(s => (
+                    <option key={s._id} value={s._id}>
+                      {s.name}{s.contact ? ` · ${s.contact}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Refund Amount (INR) *</label>
+                  <input
+                    name="amount"
+                    type="number"
+                    placeholder="Enter amount"
+                    value={formData.amount || ''}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label>Refund Date *</label>
+                  <input
+                    name="date"
+                    type="date"
+                    value={formData.date ? formData.date.split('T')[0] : new Date().toISOString().split('T')[0]}
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-actions">
+                <button type="submit" className="btn" style={{ background: '#ea580c', boxShadow: '0 4px 10px rgba(234, 88, 12, 0.15)' }}>
+                  {editingId ? 'Update Refund' : 'Save Refund'}
+                </button>
+                <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
+              </div>
+            </form>
+            );
+          })()}
 
           {showModal === 'expenses' && (
             <form onSubmit={saveExpense}>

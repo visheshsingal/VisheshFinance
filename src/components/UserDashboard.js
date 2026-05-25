@@ -63,6 +63,7 @@ export default function UserDashboard({ onLogout }) {
     date: new Date().toISOString().split('T')[0],
     notes: ''
   });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -144,9 +145,9 @@ export default function UserDashboard({ onLogout }) {
 
   const batchPaymentFees = selectedCourseId
     ? fees.filter(fee => {
-        const courseId = fee.student?.course?._id || fee.student?.course || '';
-        return courseId === selectedCourseId && fee.receiptType !== 'other';
-      })
+      const courseId = fee.student?.course?._id || fee.student?.course || '';
+      return courseId === selectedCourseId && fee.receiptType !== 'other';
+    })
     : [];
 
   const filteredBatchPaymentFees = batchPaymentFees.filter(fee => {
@@ -1131,7 +1132,7 @@ export default function UserDashboard({ onLogout }) {
                     <h3>{selectedCourseId ? activeCourse?.name || 'Batch Entries' : 'Payment Receipt'}</h3>
                     <span style={{ fontSize: '13px', color: '#64748b' }}>
                       {selectedCourseId
-                        ? 'Search entries or use Record Payment — same layout as admin panel.'
+                        ? 'Click any row to record payment for that student.'
                         : 'Step 1: Select a batch to view its payment receipt entries.'}
                     </span>
                   </div>
@@ -1301,7 +1302,6 @@ export default function UserDashboard({ onLogout }) {
                               <th>Amount Received</th>
                               <th>Transaction Mode</th>
                               <th>Overall Student Balance Status</th>
-                              <th style={{ textAlign: 'right' }}>Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1312,9 +1312,20 @@ export default function UserDashboard({ onLogout }) {
                               const receivedAmount = fee.paidAmount || fee.amount || 0;
                               const totalPaid = studentFees.reduce((sum, item) => sum + (item.amount || item.paidAmount || 0), 0);
                               const overallRemaining = Math.max(0, total - totalPaid);
+                              const canOpenPayment = Boolean(fee.student?._id || fee.student);
 
                               return (
-                                <tr key={fee._id}>
+                                <tr
+                                  key={fee._id}
+                                  onClick={() => canOpenPayment && handleStudentSelect(fee.student)}
+                                  style={{
+                                    cursor: canOpenPayment ? 'pointer' : 'default',
+                                    transition: 'background 0.15s ease'
+                                  }}
+                                  onMouseEnter={(e) => { if (canOpenPayment) e.currentTarget.style.background = '#f0fdf4'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = ''; }}
+                                  title={canOpenPayment ? 'Click to record payment for this student' : undefined}
+                                >
                                   <td style={{ fontWeight: '600', color: '#0f172a' }}>
                                     <div style={{ fontSize: '15px' }}>{fee.student?.name || '—'}</div>
                                     <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
@@ -1354,16 +1365,6 @@ export default function UserDashboard({ onLogout }) {
                                       </div>
                                     </div>
                                   </td>
-                                  <td style={{ textAlign: 'right' }}>
-                                    <button
-                                      type="button"
-                                      className="btn"
-                                      style={{ padding: '8px 14px', fontSize: '13px', background: '#0f766e' }}
-                                      onClick={() => fee.student && handleStudentSelect(fee.student)}
-                                    >
-                                      Record Payment
-                                    </button>
-                                  </td>
                                 </tr>
                               );
                             })}
@@ -1384,514 +1385,514 @@ export default function UserDashboard({ onLogout }) {
           const compactLabel = { fontSize: '12px', marginBottom: '4px' };
 
           return (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(15, 23, 42, 0.65)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 50,
-              padding: '12px'
-            }}
-            onClick={closeModal}
-          >
             <div
               style={{
-                width: '100%',
-                maxWidth: isPaymentModal ? '440px' : '760px',
-                height: isPaymentModal ? 'min(520px, calc(100vh - 24px))' : undefined,
-                maxHeight: isPaymentModal ? 'min(520px, calc(100vh - 24px))' : 'calc(100vh - 24px)',
-                background: '#ffffff',
-                borderRadius: isPaymentModal ? '16px' : '24px',
-                boxShadow: '0 24px 80px rgba(15,23,42,0.18)',
-                overflow: 'hidden',
+                position: 'fixed',
+                inset: 0,
+                backgroundColor: 'rgba(15, 23, 42, 0.65)',
                 display: 'flex',
-                flexDirection: 'column',
-                margin: 'auto'
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 50,
+                padding: '12px'
               }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={closeModal}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isPaymentModal ? '12px 16px' : '20px 28px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
-                <div style={{ minWidth: 0, paddingRight: '8px' }}>
-                  <h3 style={{ margin: 0, fontSize: isPaymentModal ? '15px' : '18px', lineHeight: 1.3 }}>
-                    {activeTab === 'payment' && (selectedStudent ? `Payment — ${selectedStudent.name}` : 'Record Payment')}
-                    {activeTab !== 'payment' && modalTab === 'other' && 'Add Other Receipt'}
-                    {modalTab === 'expenseMain' && 'Add Main Office Expense'}
-                    {modalTab === 'expenseOther' && 'Add Other Office Expense'}
-                  </h3>
-                  {isPaymentModal && activeCourse && (
-                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{activeCourse.name}</div>
-                  )}
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: isPaymentModal ? '440px' : '760px',
+                  height: isPaymentModal ? 'min(520px, calc(100vh - 24px))' : undefined,
+                  maxHeight: isPaymentModal ? 'min(520px, calc(100vh - 24px))' : 'calc(100vh - 24px)',
+                  background: '#ffffff',
+                  borderRadius: isPaymentModal ? '16px' : '24px',
+                  boxShadow: '0 24px 80px rgba(15,23,42,0.18)',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  margin: 'auto'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: isPaymentModal ? '12px 16px' : '20px 28px', borderBottom: '1px solid #e2e8f0', flexShrink: 0 }}>
+                  <div style={{ minWidth: 0, paddingRight: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: isPaymentModal ? '15px' : '18px', lineHeight: 1.3 }}>
+                      {activeTab === 'payment' && (selectedStudent ? `Payment — ${selectedStudent.name}` : 'Record Payment')}
+                      {activeTab !== 'payment' && modalTab === 'other' && 'Add Other Receipt'}
+                      {modalTab === 'expenseMain' && 'Add Main Office Expense'}
+                      {modalTab === 'expenseOther' && 'Add Other Office Expense'}
+                    </h3>
+                    {isPaymentModal && activeCourse && (
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>{activeCourse.name}</div>
+                    )}
+                  </div>
+                  <button onClick={closeModal} style={{ border: 'none', background: 'transparent', color: '#0f172a', fontSize: '20px', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
                 </div>
-                <button onClick={closeModal} style={{ border: 'none', background: 'transparent', color: '#0f172a', fontSize: '20px', cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
-              </div>
 
-              <div style={{
-                padding: isPaymentModal ? '0' : '20px 28px 28px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: isPaymentModal ? '0' : '18px',
-                overflowY: isPaymentModal ? 'hidden' : 'auto',
-                flex: 1,
-                minHeight: 0,
-                WebkitOverflowScrolling: 'touch'
-              }}>
-                {activeTab === 'payment' && (() => {
-                  const paymentStudentId = selectedStudent?._id;
-                  const totalPaidSoFar = paymentStudentId ? getTotalPaidSoFar(paymentStudentId) : 0;
-                  const existingTotalAmount = paymentStudentId ? getExistingTotalAmount(paymentStudentId) : 0;
-                  const total = parseFloat(paymentForm.totalAmount || existingTotalAmount || 0);
-                  const newPayment = parseFloat(paymentForm.paidAmount || 0);
-                  const currentRemaining = Math.max(0, total - totalPaidSoFar);
-                  const newRemaining = Math.max(0, total - totalPaidSoFar - newPayment);
-                  const uniqueBanks = Array.from(new Set(fees.map(f => f.bankName).filter(Boolean)));
-                  const matchingBanks = uniqueBanks.filter(bank =>
-                    bank.toLowerCase().includes((paymentForm.bankName || '').toLowerCase())
-                  );
-                  const bankLabel = paymentForm.method === 'bank'
-                    ? 'Select or Type Bank Name *'
-                    : (paymentForm.method === 'upi' ? 'Select or Type UPI App/Account *' : 'Select or Type Cash Account *');
-                  const bankPlaceholder = paymentForm.method === 'bank'
-                    ? 'e.g. SBI, HDFC, PNB Bank...'
-                    : (paymentForm.method === 'upi' ? 'e.g. GPay, PhonePe, Paytm...' : 'e.g. Main Cash Drawer, Office Cash...');
+                <div style={{
+                  padding: isPaymentModal ? '0' : '20px 28px 28px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: isPaymentModal ? '0' : '18px',
+                  overflowY: isPaymentModal ? 'hidden' : 'auto',
+                  flex: 1,
+                  minHeight: 0,
+                  WebkitOverflowScrolling: 'touch'
+                }}>
+                  {activeTab === 'payment' && (() => {
+                    const paymentStudentId = selectedStudent?._id;
+                    const totalPaidSoFar = paymentStudentId ? getTotalPaidSoFar(paymentStudentId) : 0;
+                    const existingTotalAmount = paymentStudentId ? getExistingTotalAmount(paymentStudentId) : 0;
+                    const total = parseFloat(paymentForm.totalAmount || existingTotalAmount || 0);
+                    const newPayment = parseFloat(paymentForm.paidAmount || 0);
+                    const currentRemaining = Math.max(0, total - totalPaidSoFar);
+                    const newRemaining = Math.max(0, total - totalPaidSoFar - newPayment);
+                    const uniqueBanks = Array.from(new Set(fees.map(f => f.bankName).filter(Boolean)));
+                    const matchingBanks = uniqueBanks.filter(bank =>
+                      bank.toLowerCase().includes((paymentForm.bankName || '').toLowerCase())
+                    );
+                    const bankLabel = paymentForm.method === 'bank'
+                      ? 'Select or Type Bank Name *'
+                      : (paymentForm.method === 'upi' ? 'Select or Type UPI App/Account *' : 'Select or Type Cash Account *');
+                    const bankPlaceholder = paymentForm.method === 'bank'
+                      ? 'e.g. SBI, HDFC, PNB Bank...'
+                      : (paymentForm.method === 'upi' ? 'e.g. GPay, PhonePe, Paytm...' : 'e.g. Main Cash Drawer, Office Cash...');
 
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                      {!selectedStudent ? (
-                        <div style={{ padding: '12px 16px', overflowY: 'auto', flex: 1 }}>
-                          <div className="form-group" style={{ marginBottom: '12px' }}>
-                            <label style={compactLabel}>Select Student *</label>
-                            <select
-                              value=""
-                              onChange={(e) => handlePaymentStudentPick(e.target.value)}
-                              required
-                              style={compactField}
-                            >
-                              <option value="">Select ({batchStudents.length} enrolled)</option>
-                              {batchStudents.map(student => (
-                                <option key={student._id} value={student._id}>
-                                  {student.name}{student.contact ? ` · ${student.contact}` : ''}
-                                </option>
-                              ))}
-                            </select>
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                        {!selectedStudent ? (
+                          <div style={{ padding: '12px 16px', overflowY: 'auto', flex: 1 }}>
+                            <div className="form-group" style={{ marginBottom: '12px' }}>
+                              <label style={compactLabel}>Select Student *</label>
+                              <select
+                                value=""
+                                onChange={(e) => handlePaymentStudentPick(e.target.value)}
+                                required
+                                style={compactField}
+                              >
+                                <option value="">Select ({batchStudents.length} enrolled)</option>
+                                {batchStudents.map(student => (
+                                  <option key={student._id} value={student._id}>
+                                    {student.name}{student.contact ? ` · ${student.contact}` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <form onSubmit={savePaymentReceipt} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                          <div style={{
-                            flex: 1,
-                            minHeight: 0,
-                            overflowY: 'auto',
-                            padding: '12px 16px',
-                            display: 'grid',
-                            gap: '10px',
-                            alignContent: 'start',
-                            WebkitOverflowScrolling: 'touch'
-                          }}>
-                            {totalPaidSoFar > 0 ? (
-                              <div style={{ background: '#f0f6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '8px 10px', fontSize: '11px', color: '#1e3a8a', lineHeight: 1.5 }}>
-                                Fee ₹{total.toLocaleString('en-IN')} · Paid ₹{totalPaidSoFar.toLocaleString('en-IN')} · Due ₹{currentRemaining.toLocaleString('en-IN')}
-                              </div>
-                            ) : (
-                              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
-                                First payment for this student
-                              </div>
-                            )}
+                        ) : (
+                          <form onSubmit={savePaymentReceipt} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                            <div style={{
+                              flex: 1,
+                              minHeight: 0,
+                              overflowY: 'auto',
+                              padding: '12px 16px',
+                              display: 'grid',
+                              gap: '10px',
+                              alignContent: 'start',
+                              WebkitOverflowScrolling: 'touch'
+                            }}>
+                              {totalPaidSoFar > 0 ? (
+                                <div style={{ background: '#f0f6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '8px 10px', fontSize: '11px', color: '#1e3a8a', lineHeight: 1.5 }}>
+                                  Fee ₹{total.toLocaleString('en-IN')} · Paid ₹{totalPaidSoFar.toLocaleString('en-IN')} · Due ₹{currentRemaining.toLocaleString('en-IN')}
+                                </div>
+                              ) : (
+                                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
+                                  First payment for this student
+                                </div>
+                              )}
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label style={compactLabel}>Total Fees (INR) *</label>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label style={compactLabel}>Total Fees (INR) *</label>
+                                  <input
+                                    name="totalAmount"
+                                    type="number"
+                                    placeholder="20000"
+                                    value={paymentForm.totalAmount}
+                                    onChange={(e) => setPaymentForm(prev => ({ ...prev, totalAmount: e.target.value }))}
+                                    required
+                                    style={compactField}
+                                  />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label style={compactLabel}>Paid Now (INR) *</label>
+                                  <input
+                                    name="paidAmount"
+                                    type="number"
+                                    placeholder="5000"
+                                    value={paymentForm.paidAmount}
+                                    onChange={(e) => setPaymentForm(prev => ({ ...prev, paidAmount: e.target.value }))}
+                                    required
+                                    style={compactField}
+                                  />
+                                </div>
+                              </div>
+
+                              <div style={{
+                                background: newRemaining === 0 ? '#f0fdf4' : '#fff7ed',
+                                border: newRemaining === 0 ? '1px solid #bbf7d0' : '1px solid #fed7aa',
+                                borderRadius: '8px',
+                                padding: '8px 10px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}>
+                                <div style={{ fontSize: '11px', color: newRemaining === 0 ? '#15803d' : '#c2410c' }}>
+                                  Balance after payment: <strong style={{ fontSize: '14px' }}>₹{newRemaining.toLocaleString('en-IN')}</strong>
+                                </div>
+                                <span style={{ fontSize: '10px', fontWeight: '600', padding: '2px 6px', borderRadius: '12px', background: newRemaining === 0 ? '#dcfce7' : '#ffedd5', color: newRemaining === 0 ? '#15803d' : '#ea580c' }}>
+                                  {newRemaining === 0 ? 'Paid' : 'Due'}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label style={compactLabel}>Date *</label>
+                                  <input
+                                    name="date"
+                                    type="date"
+                                    value={paymentForm.date}
+                                    onChange={(e) => setPaymentForm(prev => ({ ...prev, date: e.target.value }))}
+                                    required
+                                    style={compactField}
+                                  />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label style={compactLabel}>Mode *</label>
+                                  <select
+                                    value={paymentForm.method}
+                                    onChange={(e) => setPaymentForm(prev => ({ ...prev, method: e.target.value, bankName: '' }))}
+                                    required
+                                    style={compactField}
+                                  >
+                                    <option value="cash">Cash</option>
+                                    <option value="bank">Bank</option>
+                                    <option value="upi">UPI</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <div className="form-group" style={{ position: 'relative', marginBottom: 0 }}>
+                                <label style={compactLabel}>{bankLabel}</label>
                                 <input
-                                  name="totalAmount"
-                                  type="number"
-                                  placeholder="20000"
-                                  value={paymentForm.totalAmount}
-                                  onChange={(e) => setPaymentForm(prev => ({ ...prev, totalAmount: e.target.value }))}
+                                  name="bankName"
+                                  type="text"
+                                  placeholder={bankPlaceholder}
+                                  value={paymentForm.bankName}
+                                  onChange={(e) => setPaymentForm(prev => ({ ...prev, bankName: e.target.value }))}
+                                  onFocus={() => setShowBankDropdown(true)}
+                                  onBlur={() => setTimeout(() => setShowBankDropdown(false), 250)}
                                   required
+                                  autoComplete="off"
                                   style={compactField}
                                 />
+                                {showBankDropdown && matchingBanks.length > 0 && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    right: 0,
+                                    background: '#ffffff',
+                                    border: '1px solid #cbd5e1',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                                    maxHeight: '120px',
+                                    overflowY: 'auto',
+                                    zIndex: 100,
+                                    marginTop: '2px'
+                                  }}>
+                                    {matchingBanks.map(bank => (
+                                      <button
+                                        key={bank}
+                                        type="button"
+                                        onMouseDown={() => setPaymentForm(prev => ({ ...prev, bankName: bank }))}
+                                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '12px' }}
+                                      >
+                                        {bank}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
+
                               <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label style={compactLabel}>Paid Now (INR) *</label>
+                                <label style={compactLabel}>Notes (optional)</label>
                                 <input
-                                  name="paidAmount"
-                                  type="number"
-                                  placeholder="5000"
-                                  value={paymentForm.paidAmount}
-                                  onChange={(e) => setPaymentForm(prev => ({ ...prev, paidAmount: e.target.value }))}
-                                  required
+                                  name="notes"
+                                  type="text"
+                                  value={paymentForm.notes}
+                                  onChange={(e) => setPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
+                                  placeholder="Bill no., reference..."
                                   style={compactField}
                                 />
                               </div>
                             </div>
 
                             <div style={{
-                              background: newRemaining === 0 ? '#f0fdf4' : '#fff7ed',
-                              border: newRemaining === 0 ? '1px solid #bbf7d0' : '1px solid #fed7aa',
-                              borderRadius: '8px',
-                              padding: '8px 10px',
                               display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: '8px'
+                              justifyContent: 'flex-end',
+                              gap: '8px',
+                              padding: '10px 16px',
+                              borderTop: '1px solid #e2e8f0',
+                              flexShrink: 0,
+                              background: '#ffffff'
                             }}>
-                              <div style={{ fontSize: '11px', color: newRemaining === 0 ? '#15803d' : '#c2410c' }}>
-                                Balance after payment: <strong style={{ fontSize: '14px' }}>₹{newRemaining.toLocaleString('en-IN')}</strong>
-                              </div>
-                              <span style={{ fontSize: '10px', fontWeight: '600', padding: '2px 6px', borderRadius: '12px', background: newRemaining === 0 ? '#dcfce7' : '#ffedd5', color: newRemaining === 0 ? '#15803d' : '#ea580c' }}>
-                                {newRemaining === 0 ? 'Paid' : 'Due'}
-                              </span>
+                              <button type="button" className="btn secondary" onClick={closeModal} style={{ padding: '8px 14px', fontSize: '13px' }}>Cancel</button>
+                              <button type="submit" className="btn" disabled={loading} style={{ background: '#10b981', padding: '8px 14px', fontSize: '13px' }}>
+                                {loading ? 'Saving...' : 'Save'}
+                              </button>
                             </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label style={compactLabel}>Date *</label>
-                                <input
-                                  name="date"
-                                  type="date"
-                                  value={paymentForm.date}
-                                  onChange={(e) => setPaymentForm(prev => ({ ...prev, date: e.target.value }))}
-                                  required
-                                  style={compactField}
-                                />
-                              </div>
-                              <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label style={compactLabel}>Mode *</label>
-                                <select
-                                  value={paymentForm.method}
-                                  onChange={(e) => setPaymentForm(prev => ({ ...prev, method: e.target.value, bankName: '' }))}
-                                  required
-                                  style={compactField}
-                                >
-                                  <option value="cash">Cash</option>
-                                  <option value="bank">Bank</option>
-                                  <option value="upi">UPI</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            <div className="form-group" style={{ position: 'relative', marginBottom: 0 }}>
-                              <label style={compactLabel}>{bankLabel}</label>
-                              <input
-                                name="bankName"
-                                type="text"
-                                placeholder={bankPlaceholder}
-                                value={paymentForm.bankName}
-                                onChange={(e) => setPaymentForm(prev => ({ ...prev, bankName: e.target.value }))}
-                                onFocus={() => setShowBankDropdown(true)}
-                                onBlur={() => setTimeout(() => setShowBankDropdown(false), 250)}
-                                required
-                                autoComplete="off"
-                                style={compactField}
-                              />
-                              {showBankDropdown && matchingBanks.length > 0 && (
-                                <div style={{
-                                  position: 'absolute',
-                                  top: '100%',
-                                  left: 0,
-                                  right: 0,
-                                  background: '#ffffff',
-                                  border: '1px solid #cbd5e1',
-                                  borderRadius: '8px',
-                                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                                  maxHeight: '120px',
-                                  overflowY: 'auto',
-                                  zIndex: 100,
-                                  marginTop: '2px'
-                                }}>
-                                  {matchingBanks.map(bank => (
-                                    <button
-                                      key={bank}
-                                      type="button"
-                                      onMouseDown={() => setPaymentForm(prev => ({ ...prev, bankName: bank }))}
-                                      style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '12px' }}
-                                    >
-                                      {bank}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label style={compactLabel}>Notes (optional)</label>
-                              <input
-                                name="notes"
-                                type="text"
-                                value={paymentForm.notes}
-                                onChange={(e) => setPaymentForm(prev => ({ ...prev, notes: e.target.value }))}
-                                placeholder="Bill no., reference..."
-                                style={compactField}
-                              />
-                            </div>
-                          </div>
-
-                          <div style={{
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            gap: '8px',
-                            padding: '10px 16px',
-                            borderTop: '1px solid #e2e8f0',
-                            flexShrink: 0,
-                            background: '#ffffff'
-                          }}>
-                            <button type="button" className="btn secondary" onClick={closeModal} style={{ padding: '8px 14px', fontSize: '13px' }}>Cancel</button>
-                            <button type="submit" className="btn" disabled={loading} style={{ background: '#10b981', padding: '8px 14px', fontSize: '13px' }}>
-                              {loading ? 'Saving...' : 'Save'}
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  );
-                })()}
-                {activeTab !== 'payment' && modalTab === 'other' ? (
-                  <form onSubmit={saveOtherReceipt} style={{ display: 'grid', gap: '16px' }}>
-                    <div className="form-group">
-                      <label>Receipt Title *</label>
-                      <input
-                        name="title"
-                        type="text"
-                        value={otherForm.title}
-                        onChange={(e) => setOtherForm(prev => ({ ...prev, title: e.target.value }))}
-                        placeholder="E.g. Late fee, material charge"
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>Description</label>
-                      <input
-                        name="description"
-                        type="text"
-                        value={otherForm.description}
-                        onChange={(e) => setOtherForm(prev => ({ ...prev, description: e.target.value }))}
-                        placeholder="Optional details"
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>Amount (INR) *</label>
-                      <input
-                        name="amount"
-                        type="number"
-                        value={otherForm.amount}
-                        onChange={(e) => setOtherForm(prev => ({ ...prev, amount: e.target.value }))}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>Date *</label>
-                      <input
-                        name="date"
-                        type="date"
-                        value={otherForm.date}
-                        onChange={(e) => setOtherForm(prev => ({ ...prev, date: e.target.value }))}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label>Payment Source *</label>
-                      <select
-                        value={otherForm.method}
-                        onChange={(e) => setOtherForm(prev => ({ ...prev, method: e.target.value }))}
-                      >
-                        <option value="cash">Cash</option>
-                        <option value="bank">Bank</option>
-                        <option value="upi">UPI</option>
-                      </select>
-                    </div>
-
-                    {otherForm.method === 'bank' && (
+                          </form>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {activeTab !== 'payment' && modalTab === 'other' ? (
+                    <form onSubmit={saveOtherReceipt} style={{ display: 'grid', gap: '16px' }}>
                       <div className="form-group">
-                        <label>Bank Name</label>
+                        <label>Receipt Title *</label>
                         <input
-                          name="bankName"
+                          name="title"
                           type="text"
-                          value={otherForm.bankName}
-                          onChange={(e) => setOtherForm(prev => ({ ...prev, bankName: e.target.value }))}
-                          placeholder="Bank A, Bank B, etc."
+                          value={otherForm.title}
+                          onChange={(e) => setOtherForm(prev => ({ ...prev, title: e.target.value }))}
+                          placeholder="E.g. Late fee, material charge"
+                          required
                         />
                       </div>
-                    )}
 
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
-                      <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
-                      <button type="submit" className="btn" disabled={loading}>{loading ? 'Saving...' : 'Save Other Receipt'}</button>
-                    </div>
-                  </form>
-                ) : (modalTab === 'expenseMain' || modalTab === 'expenseOther') ? (
-                  <form onSubmit={saveExpense} style={{ display: 'grid', gap: '16px' }}>
-                    {expenseForm.expenseType === 'main' ? (
                       <div className="form-group">
-                        <label style={{ fontWeight: 600, color: '#475569' }}>Main Expense Category *</label>
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px' }}>
-                          {mainExpenseCategories.map(cat => (
-                            <button
-                              key={cat}
-                              type="button"
-                              onClick={() => setExpenseForm(prev => ({ ...prev, category: cat }))}
-                              className="btn"
-                              style={{
-                                minWidth: '140px',
-                                whiteSpace: 'normal',
-                                padding: '10px 14px',
-                                borderRadius: '10px',
-                                border: '1px solid #cbd5e1',
-                                background: expenseForm.category === cat ? '#f43f5e' : '#ffffff',
-                                color: expenseForm.category === cat ? '#ffffff' : '#0f172a',
-                                cursor: 'pointer',
-                                fontWeight: 600,
-                                display: 'grid',
-                                placeItems: 'center'
-                              }}
-                            >
-                              {cat}
-                            </button>
-                          ))}
+                        <label>Description</label>
+                        <input
+                          name="description"
+                          type="text"
+                          value={otherForm.description}
+                          onChange={(e) => setOtherForm(prev => ({ ...prev, description: e.target.value }))}
+                          placeholder="Optional details"
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Amount (INR) *</label>
+                        <input
+                          name="amount"
+                          type="number"
+                          value={otherForm.amount}
+                          onChange={(e) => setOtherForm(prev => ({ ...prev, amount: e.target.value }))}
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Date *</label>
+                        <input
+                          name="date"
+                          type="date"
+                          value={otherForm.date}
+                          onChange={(e) => setOtherForm(prev => ({ ...prev, date: e.target.value }))}
+                          required
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label>Payment Source *</label>
+                        <select
+                          value={otherForm.method}
+                          onChange={(e) => setOtherForm(prev => ({ ...prev, method: e.target.value }))}
+                        >
+                          <option value="cash">Cash</option>
+                          <option value="bank">Bank</option>
+                          <option value="upi">UPI</option>
+                        </select>
+                      </div>
+
+                      {otherForm.method === 'bank' && (
+                        <div className="form-group">
+                          <label>Bank Name</label>
+                          <input
+                            name="bankName"
+                            type="text"
+                            value={otherForm.bankName}
+                            onChange={(e) => setOtherForm(prev => ({ ...prev, bankName: e.target.value }))}
+                            placeholder="Bank A, Bank B, etc."
+                          />
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                        <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
+                        <button type="submit" className="btn" disabled={loading}>{loading ? 'Saving...' : 'Save Other Receipt'}</button>
+                      </div>
+                    </form>
+                  ) : (modalTab === 'expenseMain' || modalTab === 'expenseOther') ? (
+                    <form onSubmit={saveExpense} style={{ display: 'grid', gap: '16px' }}>
+                      {expenseForm.expenseType === 'main' ? (
+                        <div className="form-group">
+                          <label style={{ fontWeight: 600, color: '#475569' }}>Main Expense Category *</label>
+                          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '8px' }}>
+                            {mainExpenseCategories.map(cat => (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => setExpenseForm(prev => ({ ...prev, category: cat }))}
+                                className="btn"
+                                style={{
+                                  minWidth: '140px',
+                                  whiteSpace: 'normal',
+                                  padding: '10px 14px',
+                                  borderRadius: '10px',
+                                  border: '1px solid #cbd5e1',
+                                  background: expenseForm.category === cat ? '#f43f5e' : '#ffffff',
+                                  color: expenseForm.category === cat ? '#ffffff' : '#0f172a',
+                                  cursor: 'pointer',
+                                  fontWeight: 600,
+                                  display: 'grid',
+                                  placeItems: 'center'
+                                }}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="form-group">
+                          <label style={{ fontWeight: 600, color: '#475569' }}>Other Expense Title *</label>
+                          <input
+                            name="customTitle"
+                            type="text"
+                            placeholder="Describe the expense, e.g. printer repair"
+                            value={expenseForm.customTitle}
+                            onChange={(e) => setExpenseForm(prev => ({ ...prev, customTitle: e.target.value }))}
+                            style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
+                            required
+                          />
+                        </div>
+                      )}
+
+                      <div className="form-group">
+                        <label style={{ fontWeight: 600, color: '#475569' }}>{expenseForm.expenseType === 'other' ? 'Expense Details' : 'Optional Reference'}</label>
+                        <input
+                          name="notes"
+                          type="text"
+                          placeholder={expenseForm.expenseType === 'other'
+                            ? 'What happened? Why this expense?'
+                            : 'Vendor, bill number, or payment note'}
+                          value={expenseForm.notes}
+                          onChange={(e) => setExpenseForm(prev => ({ ...prev, notes: e.target.value }))}
+                          style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                        <div className="form-group">
+                          <label style={{ fontWeight: 600, color: '#475569' }}>Amount (INR) *</label>
+                          <input
+                            name="amount"
+                            type="number"
+                            placeholder="Enter amount"
+                            value={expenseForm.amount}
+                            onChange={(e) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
+                            style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
+                            required
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label style={{ fontWeight: 600, color: '#475569' }}>Expense Date *</label>
+                          <input
+                            name="date"
+                            type="date"
+                            value={expenseForm.date}
+                            onChange={(e) => setExpenseForm(prev => ({ ...prev, date: e.target.value }))}
+                            style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
+                            required
+                          />
                         </div>
                       </div>
-                    ) : (
+
+                      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                        <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
+                        <button type="submit" className="btn" style={{ backgroundColor: '#f43f5e', border: 'none', color: '#ffffff' }} disabled={loading}>{loading ? 'Saving...' : 'Save Expense'}</button>
+                      </div>
+                    </form>
+                  ) : modalTab === 'withdrawal' ? (
+                    <form onSubmit={saveWithdrawal} style={{ display: 'grid', gap: '16px' }}>
                       <div className="form-group">
-                        <label style={{ fontWeight: 600, color: '#475569' }}>Other Expense Title *</label>
+                        <label style={{ fontWeight: 600, color: '#475569' }}>Withdrawal Purpose / Item *</label>
                         <input
-                          name="customTitle"
+                          name="purpose"
                           type="text"
-                          placeholder="Describe the expense, e.g. printer repair"
-                          value={expenseForm.customTitle}
-                          onChange={(e) => setExpenseForm(prev => ({ ...prev, customTitle: e.target.value }))}
-                          style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
-                          required
-                        />
-                      </div>
-                    )}
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600, color: '#475569' }}>{expenseForm.expenseType === 'other' ? 'Expense Details' : 'Optional Reference'}</label>
-                      <input
-                        name="notes"
-                        type="text"
-                        placeholder={expenseForm.expenseType === 'other'
-                          ? 'What happened? Why this expense?'
-                          : 'Vendor, bill number, or payment note'}
-                        value={expenseForm.notes}
-                        onChange={(e) => setExpenseForm(prev => ({ ...prev, notes: e.target.value }))}
-                        style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                      <div className="form-group">
-                        <label style={{ fontWeight: 600, color: '#475569' }}>Amount (INR) *</label>
-                        <input
-                          name="amount"
-                          type="number"
-                          placeholder="Enter amount"
-                          value={expenseForm.amount}
-                          onChange={(e) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))}
+                          placeholder="E.g. Stationery, tea expenses, vendor payment"
+                          value={withdrawalForm.purpose}
+                          onChange={(e) => setWithdrawalForm(prev => ({ ...prev, purpose: e.target.value }))}
                           style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
                           required
                         />
                       </div>
 
                       <div className="form-group">
-                        <label style={{ fontWeight: 600, color: '#475569' }}>Expense Date *</label>
+                        <label style={{ fontWeight: 600, color: '#475569' }}>Taken By *</label>
                         <input
-                          name="date"
-                          type="date"
-                          value={expenseForm.date}
-                          onChange={(e) => setExpenseForm(prev => ({ ...prev, date: e.target.value }))}
-                          style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
-                      <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
-                      <button type="submit" className="btn" style={{ backgroundColor: '#f43f5e', border: 'none', color: '#ffffff' }} disabled={loading}>{loading ? 'Saving...' : 'Save Expense'}</button>
-                    </div>
-                  </form>
-                ) : modalTab === 'withdrawal' ? (
-                  <form onSubmit={saveWithdrawal} style={{ display: 'grid', gap: '16px' }}>
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600, color: '#475569' }}>Withdrawal Purpose / Item *</label>
-                      <input
-                        name="purpose"
-                        type="text"
-                        placeholder="E.g. Stationery, tea expenses, vendor payment"
-                        value={withdrawalForm.purpose}
-                        onChange={(e) => setWithdrawalForm(prev => ({ ...prev, purpose: e.target.value }))}
-                        style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600, color: '#475569' }}>Taken By *</label>
-                      <input
-                        name="givenBy"
-                        type="text"
-                        placeholder="Who handed over or authorized this cash?"
-                        value={withdrawalForm.givenBy}
-                        onChange={(e) => setWithdrawalForm(prev => ({ ...prev, givenBy: e.target.value }))}
-                        style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
-                        required
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label style={{ fontWeight: 600, color: '#475569' }}>Optional Remarks / Notes</label>
-                      <input
-                        name="notes"
-                        type="text"
-                        placeholder="Any additional details or reference"
-                        value={withdrawalForm.notes}
-                        onChange={(e) => setWithdrawalForm(prev => ({ ...prev, notes: e.target.value }))}
-                        style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
-                      />
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                      <div className="form-group">
-                        <label style={{ fontWeight: 600, color: '#475569' }}>Amount (INR) *</label>
-                        <input
-                          name="amount"
-                          type="number"
-                          placeholder="Enter amount"
-                          value={withdrawalForm.amount}
-                          onChange={(e) => setWithdrawalForm(prev => ({ ...prev, amount: e.target.value }))}
+                          name="givenBy"
+                          type="text"
+                          placeholder="Who handed over or authorized this cash?"
+                          value={withdrawalForm.givenBy}
+                          onChange={(e) => setWithdrawalForm(prev => ({ ...prev, givenBy: e.target.value }))}
                           style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
                           required
                         />
                       </div>
 
                       <div className="form-group">
-                        <label style={{ fontWeight: 600, color: '#475569' }}>Withdrawal Date *</label>
+                        <label style={{ fontWeight: 600, color: '#475569' }}>Optional Remarks / Notes</label>
                         <input
-                          name="date"
-                          type="date"
-                          value={withdrawalForm.date}
-                          onChange={(e) => setWithdrawalForm(prev => ({ ...prev, date: e.target.value }))}
+                          name="notes"
+                          type="text"
+                          placeholder="Any additional details or reference"
+                          value={withdrawalForm.notes}
+                          onChange={(e) => setWithdrawalForm(prev => ({ ...prev, notes: e.target.value }))}
                           style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
-                          required
                         />
                       </div>
-                    </div>
 
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
-                      <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
-                      <button type="submit" className="btn" style={{ backgroundColor: '#0284c7', border: 'none', color: '#ffffff' }} disabled={loading}>{loading ? 'Saving...' : 'Save Withdrawal'}</button>
-                    </div>
-                  </form>
-                ) : null}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                        <div className="form-group">
+                          <label style={{ fontWeight: 600, color: '#475569' }}>Amount (INR) *</label>
+                          <input
+                            name="amount"
+                            type="number"
+                            placeholder="Enter amount"
+                            value={withdrawalForm.amount}
+                            onChange={(e) => setWithdrawalForm(prev => ({ ...prev, amount: e.target.value }))}
+                            style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
+                            required
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label style={{ fontWeight: 600, color: '#475569' }}>Withdrawal Date *</label>
+                          <input
+                            name="date"
+                            type="date"
+                            value={withdrawalForm.date}
+                            onChange={(e) => setWithdrawalForm(prev => ({ ...prev, date: e.target.value }))}
+                            style={{ width: '100%', padding: '12px 14px', borderRadius: '12px', border: '1px solid #cbd5e1' }}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                        <button type="button" className="btn secondary" onClick={closeModal}>Cancel</button>
+                        <button type="submit" className="btn" style={{ backgroundColor: '#0284c7', border: 'none', color: '#ffffff' }} disabled={loading}>{loading ? 'Saving...' : 'Save Withdrawal'}</button>
+                      </div>
+                    </form>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
           );
         })()}
       </main>
